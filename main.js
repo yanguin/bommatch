@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
+const licenseChecker = require('./license-checker');
 
 let mainWindow;
 
@@ -34,17 +35,55 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+// 授权通过后启动窗口和计时器
+function startApp(duration) {
+  createWindow();
+  // 启动使用计时器（时长由云函数控制，单位：秒）
+  licenseChecker.startUsageTimer(duration, () => {
+    if (mainWindow) {
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        title: '提示',
+        message: '请关闭并重新启动软件后，继续使用',
+        buttons: ['确定'],
+        noLink: true
+      });
+    }
+    app.quit();
+  });
+}
+
+// 启动前先进行联网授权检查
+app.whenReady().then(async () => {
+  const result = await licenseChecker.checkLicense();
+
+  if (!result.enabled) {
+    // 软件不可用：提示并退出
+    dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
+    app.quit();
+    return;
+  }
+
+  // 授权通过，正常启动（传入云函数返回的使用时长）
+  startApp(result.duration);
+});
 
 app.on('window-all-closed', () => {
+  licenseChecker.stopUsageTimer();
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-app.on('activate', () => {
+app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    const result = await licenseChecker.checkLicense();
+    if (!result.enabled) {
+      dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
+      app.quit();
+      return;
+    }
+    startApp(result.duration);
   }
 });
 
