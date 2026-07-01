@@ -305,6 +305,69 @@
       line-height: 1.6;
     }
 
+    .sheet-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 0 0 0;
+      border-top: 1px solid #ebeef5;
+      margin-top: 8px;
+    }
+
+    .sheet-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: #f4f4f5;
+      border: 1px solid #e4e7ed;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #606266;
+      transition: all 0.2s;
+      max-width: 180px;
+    }
+
+    .sheet-tab:hover {
+      background: #ecf5ff;
+      border-color: #c6e2ff;
+      color: #409eff;
+    }
+
+    .sheet-tab.active {
+      background: #409eff;
+      border-color: #409eff;
+      color: #fff;
+    }
+
+    .sheet-tab.skipped {
+      opacity: 0.55;
+    }
+
+    .sheet-tab.skipped:hover {
+      background: #fef0f0;
+      border-color: #fbc4c4;
+      color: #f56c6c;
+    }
+
+    .sheet-tab-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 120px;
+    }
+
+    .sheet-tab-info {
+      font-size: 11px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+
+    .sheet-tab-info.skipped {
+      color: #f56c6c;
+    }
+
     .loading-mask {
       position: fixed;
       top: 0;
@@ -340,6 +403,33 @@
       font-size: 13px;
       color: #606266;
     }
+
+    /* 置顶按钮 - 简洁圆形样式 */
+    .pin-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.2);
+      transition: background 0.2s;
+      margin-top: 8px;
+    }
+
+    .pin-btn:hover {
+      background: rgba(255, 255, 255, 0.35);
+    }
+
+    .pin-btn.pinned {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .pin-btn i {
+      font-size: 14px;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -352,14 +442,33 @@
 
     <!-- 头部 -->
     <div class="header">
-      <h1>BOM型号匹配工具</h1>
-      <p>自动匹配viiyong MLCC型号，支持精确匹配与容差匹配</p>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1>BOM型号匹配工具</h1>
+          <p>自动匹配 MLCC 型号，支持精确匹配与容差匹配</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <el-select v-model="currentBrand" size="small" style="width: 110px;" @change="switchBrand">
+            <el-option label="微容" value="weirong"></el-option>
+            <el-option label="强茂" value="qiangmao"></el-option>
+          </el-select>
+          <span
+            class="pin-btn"
+            :class="{ pinned: isPinned }"
+            @click="togglePin"
+            title="置顶窗口">
+            <i :class="isPinned ? 'el-icon-bottom' : 'el-icon-top'"></i>
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- 主内容 -->
     <div class="main-content">
       <!-- 左侧面板 -->
       <div class="left-panel">
+        <!-- ============ 微容品牌 ============ -->
+        <div v-if="currentBrand === 'weirong'">
         <!-- 模式切换 -->
         <div class="mode-tabs">
           <div class="mode-tab" :class="{ active: activeMode === 'bom' }" @click="switchMode('bom')">
@@ -398,6 +507,15 @@
             <div style="margin-top: 8px; font-size: 12px; color: #909399;">
               常用列名：物料描述、物料规格、PLMTITLE、规格型号等
             </div>
+            <!-- <div style="margin-top: 8px; padding: 8px 10px; background: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff; font-size: 12px; color: #606266; line-height: 1.7;">
+              支持的规格格式（字段顺序不限，公差可省略±号）：<br>
+              ① 斜杠 EIA 码：<code style="color:#e96900;">C/222/K/50/X5R/0402/A/RoHS</code><br>
+              &nbsp;&nbsp;&nbsp;C=MLCC / 222=容量码(=2200pF) / K=公差(±10%) / 50=电压 / X5R=介质 / 0402=封装 / A=端电极 / RoHS=环保<br>
+              ② 逗号带单位：<code style="color:#e96900;">0402,1nF,10%,50V,X5R</code>（公差10%自动识别为±10%）<br>
+              ③ 英文 PLM 描述：<code style="color:#e96900;">Ceramic Capacitor, X7R, 100.0 nF, 10%, 16.0 V, SMD, 0402</code><br>
+              ④ 逗号 EIA 码+型号：<code style="color:#e96900;">MLCC,106,K,6.3V,X5R,0603,T=0.80mm,型号(品牌)</code><br>
+              <span style="color:#67C23A;">列名自动识别：物料描述/规格型号/PLMTITLE/描述等找不到时自动回退</span>
+            </div> -->
           </div>
 
           <!-- 系列选择 -->
@@ -486,13 +604,31 @@
         <div v-show="activeMode === 'filter'">
           <!-- 产品型号 -->
           <div class="filter-section">
-            <div class="filter-section-title">产品型号</div>
+            <div class="filter-section-title">产品型号（支持输入完整规格自动解析）</div>
             <el-input
               v-model="filterForm.productName"
-              placeholder="输入产品型号关键字"
+              placeholder="如: 0402,100nF,±10%,50V,X7R 或 贴片电容,10uF(106)/10V,±10%,X5R,0603"
               size="small"
-              clearable>
+              clearable
+              @keyup.enter.native="parseAndFill">
             </el-input>
+            <div style="margin-top: 8px; display: flex; gap: 8px;">
+              <el-button size="small" type="primary" plain @click="parseAndFill" icon="el-icon-edit-outline">
+                解析
+              </el-button>
+              <el-button size="small" type="success" @click="parseAndQuery" icon="el-icon-search">
+                查询
+              </el-button>
+            </div>
+            <div style="margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.6;">
+              支持多种格式：<br>
+              • 逗号带单位：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code><br>
+              • 斜杠EIA码：<code style="color:#e96900;">C/222/K/50/X5R/0402</code><br>
+              • 贴片电容：<code style="color:#e96900;">贴片电容,10uF(106)/10V,±10%,X5R,0603</code><br>
+              • 中文封装：<code style="color:#e96900;">0402封装..._100nF/±10%/50V/X7R</code><br>
+              • MLCC型号：<code style="color:#e96900;">MLCC,106,K,6.3V,X5R,0603</code><br>
+              输入后点"解析"自动填充各筛选项
+            </div>
           </div>
 
           <!-- 应用场景 -->
@@ -605,23 +741,75 @@
             </div>
           </div>
         </div>
+        </div><!-- /.微容品牌 -->
+
+        <!-- ============ 强茂品牌 ============ -->
+        <div v-if="currentBrand === 'qiangmao'">
+          <!-- 产品型号 -->
+          <div class="filter-section">
+            <div class="filter-section-title">产品型号</div>
+            <el-input
+              v-model="qmFilterForm.productName"
+              placeholder="输入产品型号关键字"
+              size="small"
+              clearable
+              @keyup.enter.native="runQmFilter">
+            </el-input>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="filter-actions">
+            <el-button type="primary" @click="runQmFilter" :loading="qmFiltering" icon="el-icon-search" style="flex: 1;">
+              查询
+            </el-button>
+            <el-button @click="resetQmFilter" icon="el-icon-refresh" style="flex: 1;">
+              清空
+            </el-button>
+          </div>
+
+          <!-- 筛选结果统计 -->
+          <div v-if="qmFilterResult" class="form-item" style="margin-top: 20px;">
+            <div class="section-title">📊 筛选结果</div>
+            <div class="stats-grid">
+              <div class="stat-card full-width">
+                <div class="stat-value">{{ qmFilterResult.length }}</div>
+                <div class="stat-label">匹配产品数</div>
+              </div>
+            </div>
+            <div v-if="qmFilterResult.length > 0" class="button-group" style="margin-top: 15px;">
+              <el-button type="success" @click="exportQmFilterResult" icon="el-icon-download" style="flex: 1;">
+                导出Excel
+              </el-button>
+            </div>
+          </div>
+        </div><!-- /.强茂品牌 -->
       </div>
 
       <!-- 右侧结果面板 -->
       <div class="right-panel">
         <div class="results-header">
           <div style="font-size: 16px; font-weight: 600; color: #303133;">
-            <span v-if="activeMode === 'bom'"></span>匹配结果</span>
-            <span v-else>筛选结果</span>
-            <span v-if="activeMode === 'bom' && matchData" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
-              共 {{ filteredResults.length }} 条（总 {{ matchData.results.length }} 条）
-            </span>
-            <span v-if="activeMode === 'filter' && filterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
-              共 {{ filteredFilterResult.length }} 条
-            </span>
+            <!-- 微容品牌 -->
+            <template v-if="currentBrand === 'weirong'">
+              <span v-if="activeMode === 'bom'">匹配结果</span>
+              <span v-else>筛选结果</span>
+              <span v-if="activeMode === 'bom' && matchData" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+                共 {{ filteredResults.length }} 条（总 {{ currentSheet ? currentSheet.data.results.length : 0 }} 条）
+              </span>
+              <span v-if="activeMode === 'filter' && filterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+                共 {{ filteredFilterResult.length }} 条
+              </span>
+            </template>
+            <!-- 强茂品牌 -->
+            <template v-else>
+              <span>筛选结果</span>
+              <span v-if="qmFilterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+                共 {{ filteredQmFilterResult.length }} 条
+              </span>
+            </template>
           </div>
-          <!-- BOM匹配模式的搜索 -->
-          <div v-if="activeMode === 'bom' && matchData" style="display: flex; gap: 10px; align-items: center;">
+          <!-- 微容 - BOM匹配模式的搜索 -->
+          <div v-if="currentBrand === 'weirong' && activeMode === 'bom' && matchData" style="display: flex; gap: 10px; align-items: center;">
             <el-select
               v-model="searchColumn"
               placeholder="选择搜索列"
@@ -654,10 +842,21 @@
               <el-option label="未解析" value="未解析"></el-option>
             </el-select>
           </div>
-          <!-- 型号筛选模式的搜索 -->
-          <div v-if="activeMode === 'filter' && filterResult" style="display: flex; gap: 10px; align-items: center;">
+          <!-- 微容 - 型号筛选模式的搜索 -->
+          <div v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult" style="display: flex; gap: 10px; align-items: center;">
             <el-input
               v-model="filterSearchText"
+              placeholder="搜索产品型号..."
+              prefix-icon="el-icon-search"
+              clearable
+              size="small"
+              style="width: 250px;">
+            </el-input>
+          </div>
+          <!-- 强茂 - 筛选结果搜索 -->
+          <div v-if="currentBrand === 'qiangmao' && qmFilterResult" style="display: flex; gap: 10px; align-items: center;">
+            <el-input
+              v-model="qmSearchText"
               placeholder="搜索产品型号..."
               prefix-icon="el-icon-search"
               clearable
@@ -668,21 +867,22 @@
         </div>
 
         <div class="results-body">
+          <!-- ============ 微容品牌 ============ -->
           <!-- 空状态 - BOM匹配 -->
-          <div v-if="activeMode === 'bom' && !matchData" class="empty-state">
+          <div v-if="currentBrand === 'weirong' && activeMode === 'bom' && !matchData" class="empty-state">
             <i class="el-icon-document"></i>
             <div>请选择BOM表文件并点击"开始匹配"</div>
           </div>
 
           <!-- 空状态 - 型号筛选 -->
-          <div v-if="activeMode === 'filter' && !filterResult" class="empty-state">
+          <div v-if="currentBrand === 'weirong' && activeMode === 'filter' && !filterResult" class="empty-state">
             <i class="el-icon-search"></i>
             <div>请设置筛选条件并点击"查询"</div>
           </div>
 
           <!-- BOM匹配结果表格 -->
           <el-table
-            v-if="activeMode === 'bom' && matchData"
+            v-if="currentBrand === 'weirong' && activeMode === 'bom' && currentSheet && !currentSheet.skipped"
             :data="filteredResults"
             stripe
             border
@@ -710,7 +910,7 @@
               </template>
             </el-table-column>
             <el-table-column
-              v-for="letter in matchData.letters"
+              v-for="letter in currentSheet.displayLetters"
               :key="letter"
               :label="letter"
               :prop="'letter_' + letter"
@@ -721,9 +921,30 @@
             </el-table-column>
           </el-table>
 
-          <!-- 型号筛选结果表格 -->
+          <!-- 当前 sheet 被跳过的提示 -->
+          <div v-if="currentBrand === 'weirong' && activeMode === 'bom' && currentSheet && currentSheet.skipped" class="empty-state">
+            <i class="el-icon-warning"></i>
+            <div>该 sheet 未找到规格列：{{ currentSheet.reason }}</div>
+          </div>
+
+          <!-- Sheet 切换标签（多个 sheet 时显示） -->
+          <div v-if="currentBrand === 'weirong' && activeMode === 'bom' && matchData && sheetList.length > 1" class="sheet-tabs">
+            <div
+              v-for="sheet in sheetList"
+              :key="sheet.index"
+              class="sheet-tab"
+              :class="{ active: sheet.index === currentSheetIndex, skipped: sheet.skipped }"
+              @click="switchSheet(sheet.index)"
+              :title="sheet.skipped ? '该 sheet 未找到规格列' : (sheet.name + ' (' + sheet.total + ' 行)')">
+              <span class="sheet-tab-name">{{ sheet.name }}</span>
+              <span class="sheet-tab-info" v-if="!sheet.skipped">{{ sheet.parsed }}/{{ sheet.total }}</span>
+              <span class="sheet-tab-info skipped" v-else>跳过</span>
+            </div>
+          </div>
+
+          <!-- 微容 - 型号筛选结果表格 -->
           <el-table
-            v-if="activeMode === 'filter' && filterResult"
+            v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult"
             :data="filteredFilterResult"
             stripe
             border
@@ -739,6 +960,35 @@
             <el-table-column prop="series" label="系列" width="80" align="center">
               <template slot-scope="scope">
                 <el-tag :type="getSeriesTagType(scope.row.series)" size="mini">{{ scope.row.series }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>
+            <el-table-column prop="tempCharacteristics" label="温度特性" width="100" align="center"></el-table-column>
+            <el-table-column prop="capacity" label="标称容量" min-width="120"></el-table-column>
+            <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"></el-table-column>
+            <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"></el-table-column>
+          </el-table>
+
+          <!-- ============ 强茂品牌 ============ -->
+          <!-- 空状态 - 强茂筛选 -->
+          <div v-if="currentBrand === 'qiangmao' && !qmFilterResult" class="empty-state">
+            <i class="el-icon-search"></i>
+            <div>请输入产品型号并点击"查询"</div>
+          </div>
+
+          <!-- 强茂 - 筛选结果表格 -->
+          <el-table
+            v-if="currentBrand === 'qiangmao' && qmFilterResult"
+            :data="filteredQmFilterResult"
+            stripe
+            border
+            :height="tableHeight"
+            style="flex: 1;"
+            :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
+            <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
+            <el-table-column prop="productName" label="产品型号" min-width="180">
+              <template slot-scope="scope">
+                <span style="font-weight: 600; color: #409eff;">{{ scope.row.productName }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>

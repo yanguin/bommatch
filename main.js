@@ -128,21 +128,48 @@ ipcMain.handle('run-match', async (event, { bomPath, products, options }) => {
   }
 });
 
-// 导出Excel
-ipcMain.handle('export-excel', async (event, { outputPath, data, headers, letters }) => {
+// 导出Excel（支持多 sheet）
+ipcMain.handle('export-excel', async (event, { outputPath, data, headers, letters, sheets }) => {
   try {
-    // data已经是完整的aoa数组，包含表头和数据行
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const origWidth = headers.length - 2 - letters.length; // 原表宽度
-
-    ws['!cols'] = [];
-    for (let c = 0; c < origWidth; c++) ws['!cols'].push({ wch: 14 });
-    for (let i = 0; i < letters.length; i++) ws['!cols'].push({ wch: 26 });
-    ws['!cols'].push({ wch: 8 }); // 匹配数量
-    ws['!cols'].push({ wch: 10 }); // 匹配状态
-
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+    // 多 sheet 模式：sheets 是 [{ sheetName, data, headers, letters }, ...]
+    if (sheets && Array.isArray(sheets) && sheets.length > 0) {
+      const usedNames = new Set();
+      for (const s of sheets) {
+        const ws = XLSX.utils.aoa_to_sheet(s.data);
+        const origWidth = s.headers.length - 2 - s.letters.length;
+        ws['!cols'] = [];
+        for (let c = 0; c < origWidth; c++) ws['!cols'].push({ wch: 14 });
+        for (let i = 0; i < s.letters.length; i++) ws['!cols'].push({ wch: 26 });
+        ws['!cols'].push({ wch: 8 }); // 匹配数量
+        ws['!cols'].push({ wch: 10 }); // 匹配状态
+
+        // sheet 名去重（Excel 限制 31 字符，且不能含特殊字符）
+        let name = (s.sheetName || 'Sheet').replace(/[\\\/\?\*\[\]:]/g, '_').substring(0, 31);
+        let finalName = name;
+        let suffix = 1;
+        while (usedNames.has(finalName)) {
+          const suffixStr = '_' + suffix;
+          finalName = name.substring(0, 31 - suffixStr.length) + suffixStr;
+          suffix++;
+        }
+        usedNames.add(finalName);
+
+        XLSX.utils.book_append_sheet(wb, ws, finalName);
+      }
+    } else {
+      // 单 sheet 兼容模式
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const origWidth = headers.length - 2 - letters.length;
+      ws['!cols'] = [];
+      for (let c = 0; c < origWidth; c++) ws['!cols'].push({ wch: 14 });
+      for (let i = 0; i < letters.length; i++) ws['!cols'].push({ wch: 26 });
+      ws['!cols'].push({ wch: 8 });
+      ws['!cols'].push({ wch: 10 });
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    }
+
     XLSX.writeFile(wb, outputPath);
 
     return { success: true };
@@ -340,4 +367,22 @@ ipcMain.handle('export-filter-excel', async (event, { outputPath, data }) => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+// 窗口置顶切换
+ipcMain.handle('toggle-pin-window', async (event) => {
+  if (mainWindow) {
+    const isPinned = mainWindow.isAlwaysOnTop();
+    mainWindow.setAlwaysOnTop(!isPinned);
+    return { pinned: !isPinned };
+  }
+  return { pinned: false };
+});
+
+// 获取窗口置顶状态
+ipcMain.handle('get-pin-status', async (event) => {
+  if (mainWindow) {
+    return { pinned: mainWindow.isAlwaysOnTop() };
+  }
+  return { pinned: false };
 });
