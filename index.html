@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BOM型号匹配工具</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f5f7fa;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 30px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .left-panel {
+      width: 360px;
+      min-width: 360px;
+      max-width: 360px;
+      background: white;
+      border-right: 1px solid #e4e7ed;
+      padding: 20px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .right-panel {
+      flex: 1;
+      min-width: 400px;
+      display: flex;
+      flex-direction: column;
+      background: #f5f7fa;
+      overflow: hidden;
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #667eea;
+    }
+
+    .form-item {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 14px;
+      color: #606266;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .file-display {
+      font-size: 13px;
+      color: #909399;
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #f5f7fa;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    .series-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 15px;
+    }
+
+    .stat-card {
+      background: #f5f7fa;
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .stat-card.full-width {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .stat-card.full-width .stat-value {
+      color: white;
+      font-size: 28px;
+    }
+
+    .stat-card.full-width .stat-label {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #909399;
+      margin-top: 4px;
+    }
+
+    /* 模式切换标签 */
+    .mode-tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .mode-tab {
+      flex: 1;
+      padding: 10px 0;
+      text-align: center;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #606266;
+      background: #f5f7fa;
+      transition: all 0.3s;
+      border-right: 1px solid #dcdfe6;
+    }
+
+    .mode-tab:last-child {
+      border-right: none;
+    }
+
+    .mode-tab.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    /* 容量容差范围行内布局 */
+    .tolerance-inline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tolerance-inline .el-input-number {
+      flex-shrink: 0;
+    }
+
+    .tolerance-inline .tolerance-text {
+      font-size: 12px;
+      color: #909399;
+    }
+
+    /* 型号筛选 - 选项区域 */
+    .filter-section {
+      margin-bottom: 18px;
+    }
+
+    .filter-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 8px;
+    }
+
+    /* 一行显示两个（尺寸代码、温度特性） */
+    .filter-checkbox-group-2cols {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px 8px;
+    }
+
+    .filter-checkbox-group-2cols .el-checkbox {
+      margin-right: 0;
+      margin-bottom: 0;
+    }
+
+    /* 一行显示三个（容量偏差） */
+    .filter-checkbox-group-3cols {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px 8px;
+    }
+
+    .filter-checkbox-group-3cols .el-checkbox {
+      margin-right: 0;
+      margin-bottom: 0;
+    }
+
+    .filter-input-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-input-group .el-input {
+      flex: 1;
+    }
+
+    /* 统一单位框样式 */
+    .unit-box {
+      padding: 6px 12px;
+      background: #f5f7fa;
+      border: 1px solid #dcdfe6;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #606266;
+      min-width: 60px;
+      text-align: center;
+    }
+
+    .filter-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .results-header {
+      background: white;
+      padding: 15px 20px;
+      border-bottom: 1px solid #e4e7ed;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .results-body {
+      flex: 1;
+      overflow: hidden; /* 防止双滚动条 */
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #909399;
+    }
+
+    .empty-state i {
+      font-size: 80px;
+      margin-bottom: 20px;
+      color: #dcdfe6;
+    }
+
+    .el-table {
+      font-size: 13px;
+    }
+
+    .status-tag {
+      font-size: 12px;
+    }
+
+    .match-names {
+      white-space: pre-line;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .loading-mask {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .loading-text {
+      margin-top: 20px;
+      font-size: 16px;
+      color: #606266;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .progress-info {
+      margin-top: 15px;
+      padding: 12px;
+      background: #f0f9ff;
+      border-radius: 6px;
+      border-left: 3px solid #409eff;
+      font-size: 13px;
+      color: #606266;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 加载遮罩 -->
+    <div v-if="loading" class="loading-mask">
+      <i class="el-icon-loading" style="font-size: 50px; color: #667eea;"></i>
+      <div class="loading-text">{{ loadingText }}</div>
+    </div>
+
+    <!-- 头部 -->
+    <div class="header">
+      <h1>BOM型号匹配工具</h1>
+      <p>自动匹配viiyong MLCC型号，支持精确匹配与容差匹配</p>
+    </div>
+
+    <!-- 主内容 -->
+    <div class="main-content">
+      <!-- 左侧面板 -->
+      <div class="left-panel">
+        <!-- 模式切换 -->
+        <div class="mode-tabs">
+          <div class="mode-tab" :class="{ active: activeMode === 'bom' }" @click="switchMode('bom')">
+            📋 BOM匹配
+          </div>
+          <div class="mode-tab" :class="{ active: activeMode === 'filter' }" @click="switchMode('filter')">
+            🔍 型号筛选
+          </div>
+        </div>
+
+        <!-- ============ BOM匹配模式 ============ -->
+        <div v-show="activeMode === 'bom'">
+          <!-- 文件选择 -->
+          <div class="form-item">
+            <div class="section-title">📁 文件选择</div>
+            <label class="form-label">BOM表文件</label>
+            <el-button @click="selectBomFile" size="small" type="primary" plain icon="el-icon-document">
+              选择Excel文件
+            </el-button>
+            <div v-if="bomPath" class="file-display">
+              {{ bomPath }}
+            </div>
+          </div>
+
+          <!-- 规格表头配置 -->
+          <div class="form-item">
+            <label class="form-label">规格描述列名（支持自定义）</label>
+            <el-input
+              v-model="descColumnName"
+              placeholder="物料描述"
+              size="small"
+              clearable
+              style="width: 100%;">
+              <el-button slot="append" @click="descColumnName='物料描述'" size="small">默认</el-button>
+            </el-input>
+            <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+              常用列名：物料描述、物料规格、PLMTITLE、规格型号等
+            </div>
+          </div>
+
+          <!-- 系列选择 -->
+          <div class="form-item">
+            <label class="form-label">匹配系列（可多选，当前已选 {{ selectedSeries.length }} 个）</label>
+            <el-checkbox-group v-model="selectedSeries" class="series-group">
+              <el-checkbox label="A">A系列 - 车载动力总成/安全设备</el-checkbox>
+              <el-checkbox label="T">T系列 - 车载信息娱乐/舒适设备</el-checkbox>
+              <el-checkbox label="B">B系列 - 工业设备</el-checkbox>
+              <el-checkbox label="V">V系列 - 通用设备</el-checkbox>
+            </el-checkbox-group>
+            <div v-if="selectedSeries.length === 0" style="margin-top: 8px; color: #f56c6c; font-size: 12px;">
+              ⚠️ 未选择任何系列，将匹配全部产品
+            </div>
+          </div>
+
+          <!-- 容量容差范围（行内显示） -->
+          <div class="form-item">
+            <label class="form-label">容量容差范围</label>
+            <div class="tolerance-inline">
+              <el-input-number v-model="fuzzyTolerance" :min="0" :max="0.5" :step="0.01" :precision="2" size="small"></el-input-number>
+              <span class="tolerance-text">相差 {{ (fuzzyTolerance * 100).toFixed(0) }}% 内匹配</span>
+            </div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="button-group">
+            <el-button type="primary" @click="runMatch" :disabled="!bomPath || matching" :loading="matching" style="flex: 1;">
+              开始匹配
+            </el-button>
+          </div>
+
+          <!-- 统计信息 -->
+          <div v-if="stats" class="form-item">
+            <div class="section-title">📊 匹配统计</div>
+            <div class="stats-grid">
+              <div class="stat-card full-width">
+                <div class="stat-value">{{ stats.total }}</div>
+                <div class="stat-label">数据行</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.parsed }}</div>
+                <div class="stat-label">成功解析</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.unparse }}</div>
+                <div class="stat-label">未解析</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.duplicate }}</div>
+                <div class="stat-label">重复物料</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.ignoreDev }}</div>
+                <div class="stat-label">忽略偏差</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.exact }}</div>
+                <div class="stat-label">精确匹配</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.noMatch }}</div>
+                <div class="stat-label">未匹配</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.empty }}</div>
+                <div class="stat-label">空描述</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ stats.fuzzy }}</div>
+                <div class="stat-label">容差匹配</div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 导出按钮 -->
+          <div v-if="matchData" class="button-group">
+            <el-button type="success" @click="exportExcel" icon="el-icon-download" style="flex: 1;">
+              导出Excel
+            </el-button>
+          </div>
+        </div>
+
+        <!-- ============ 型号筛选模式 ============ -->
+        <div v-show="activeMode === 'filter'">
+          <!-- 产品型号 -->
+          <div class="filter-section">
+            <div class="filter-section-title">产品型号</div>
+            <el-input
+              v-model="filterForm.productName"
+              placeholder="输入产品型号关键字"
+              size="small"
+              clearable>
+            </el-input>
+          </div>
+
+          <!-- 应用场景 -->
+          <div class="filter-section">
+            <div class="filter-section-title">应用场景（系列）</div>
+            <el-checkbox-group v-model="filterForm.series" class="series-group">
+              <el-checkbox label="A">A系列 - 车载动力总成/安全设备</el-checkbox>
+              <el-checkbox label="T">T系列 - 车载信息娱乐/舒适设备</el-checkbox>
+              <el-checkbox label="B">B系列 - 工业设备</el-checkbox>
+              <el-checkbox label="V">V系列 - 通用设备</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <!-- 尺寸代码 -->
+          <div class="filter-section">
+            <div class="filter-section-title">尺寸代码 (inch/mm)</div>
+            <el-checkbox-group v-model="filterForm.sizes" class="filter-checkbox-group-2cols">
+              <el-checkbox label="008004/0201M">008004/0201M</el-checkbox>
+              <el-checkbox label="01005/0402M">01005/0402M</el-checkbox>
+              <el-checkbox label="0201/0603M">0201/0603M</el-checkbox>
+              <el-checkbox label="0402/1005M">0402/1005M</el-checkbox>
+              <el-checkbox label="0603/1608M">0603/1608M</el-checkbox>
+              <el-checkbox label="0704/1810">0704/1810</el-checkbox>
+              <el-checkbox label="0805/2012M">0805/2012M</el-checkbox>
+              <el-checkbox label="1111/2828">1111/2828</el-checkbox>
+              <el-checkbox label="1206/3216M">1206/3216M</el-checkbox>
+              <el-checkbox label="1210/3225M">1210/3225M</el-checkbox>
+              <el-checkbox label="2220/5750M">2220/5750M</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <!-- 温度特性 -->
+          <div class="filter-section">
+            <div class="filter-section-title">温度特性</div>
+            <el-checkbox-group v-model="filterForm.temps" class="filter-checkbox-group-2cols">
+              <el-checkbox label="C0G">C0G(-55℃~125℃)</el-checkbox>
+              <el-checkbox label="X5R">X5R(-55℃~85℃)</el-checkbox>
+              <el-checkbox label="X6S">X6S(-55℃~105℃)</el-checkbox>
+              <el-checkbox label="X6T">X6T(-55℃~105℃)</el-checkbox>
+              <el-checkbox label="X7R">X7R(-55℃~125℃)</el-checkbox>
+              <el-checkbox label="X7S">X7S(-55℃~125℃)</el-checkbox>
+              <el-checkbox label="X7T">X7T(-55℃~125℃)</el-checkbox>
+              <el-checkbox label="X8G">X8G(-55℃~150℃)</el-checkbox>
+              <el-checkbox label="X8L">X8L(-55℃~150℃)</el-checkbox>
+              <el-checkbox label="X3H">X3H(-55℃~175℃)</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <!-- 标称容量 -->
+          <div class="filter-section">
+            <div class="filter-section-title">标称容量</div>
+            <div class="filter-input-group">
+              <el-input v-model="filterForm.capacityValue" placeholder="输入数值" size="small"></el-input>
+              <el-select v-model="filterForm.capacityUnit" size="small" style="width: 70px;">
+                <el-option label="pF" value="pF"></el-option>
+                <el-option label="nF" value="nF"></el-option>
+                <el-option label="uF" value="uF"></el-option>
+              </el-select>
+            </div>
+          </div>
+
+          <!-- 容量偏差 -->
+          <div class="filter-section">
+            <div class="filter-section-title">容量偏差</div>
+            <el-checkbox-group v-model="filterForm.deviations" class="filter-checkbox-group-3cols">
+              <el-checkbox label="±0.05pF">±0.05pF</el-checkbox>
+              <el-checkbox label="±0.1pF">±0.1pF</el-checkbox>
+              <el-checkbox label="±0.25pF">±0.25pF</el-checkbox>
+              <el-checkbox label="±0.5pF">±0.5pF</el-checkbox>
+              <el-checkbox label="±1%">±1%</el-checkbox>
+              <el-checkbox label="±2%">±2%</el-checkbox>
+              <el-checkbox label="±5%">±5%</el-checkbox>
+              <el-checkbox label="±10%">±10%</el-checkbox>
+              <el-checkbox label="±20%">±20%</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <!-- 额定电压 -->
+          <div class="filter-section">
+            <div class="filter-section-title">额定电压</div>
+            <div class="filter-input-group">
+              <el-input v-model="filterForm.voltageValue" placeholder="输入数值" size="small"></el-input>
+              <div class="unit-box">Vdc</div>
+            </div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="filter-actions">
+            <el-button type="primary" @click="runFilter" :loading="filtering" icon="el-icon-search" style="flex: 1;">
+              查询
+            </el-button>
+            <el-button @click="resetFilter" icon="el-icon-refresh" style="flex: 1;">
+              重置
+            </el-button>
+          </div>
+
+          <!-- 筛选结果统计 -->
+          <div v-if="filterResult" class="form-item" style="margin-top: 20px;">
+            <div class="section-title">📊 筛选结果</div>
+            <div class="stats-grid">
+              <div class="stat-card full-width">
+                <div class="stat-value">{{ filterResult.length }}</div>
+                <div class="stat-label">匹配产品数</div>
+              </div>
+            </div>
+            <div v-if="filterResult.length > 0" class="button-group" style="margin-top: 15px;">
+              <el-button type="success" @click="exportFilterResult" icon="el-icon-download" style="flex: 1;">
+                导出Excel
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧结果面板 -->
+      <div class="right-panel">
+        <div class="results-header">
+          <div style="font-size: 16px; font-weight: 600; color: #303133;">
+            <span v-if="activeMode === 'bom'"></span>匹配结果</span>
+            <span v-else>筛选结果</span>
+            <span v-if="activeMode === 'bom' && matchData" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+              共 {{ filteredResults.length }} 条（总 {{ matchData.results.length }} 条）
+            </span>
+            <span v-if="activeMode === 'filter' && filterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+              共 {{ filteredFilterResult.length }} 条
+            </span>
+          </div>
+          <!-- BOM匹配模式的搜索 -->
+          <div v-if="activeMode === 'bom' && matchData" style="display: flex; gap: 10px; align-items: center;">
+            <el-select
+              v-model="searchColumn"
+              placeholder="选择搜索列"
+              size="small"
+              clearable
+              style="width: 150px;">
+              <el-option label="物料描述" value="desc"></el-option>
+              <el-option label="匹配状态" value="status"></el-option>
+              <el-option label="匹配型号" value="matchNames"></el-option>
+            </el-select>
+            <el-input
+              v-model="searchText"
+              placeholder="输入搜索内容..."
+              prefix-icon="el-icon-search"
+              clearable
+              size="small"
+              style="width: 200px;">
+            </el-input>
+            <el-select
+              v-model="filterStatus"
+              placeholder="筛选状态"
+              size="small"
+              clearable
+              style="width: 120px;">
+              <el-option label="全部" value=""></el-option>
+              <el-option label="精确匹配" value="精确匹配"></el-option>
+              <el-option label="忽略偏差" value="忽略偏差"></el-option>
+              <el-option label="容差匹配" value="容差匹配"></el-option>
+              <el-option label="未匹配" value="未匹配"></el-option>
+              <el-option label="未解析" value="未解析"></el-option>
+            </el-select>
+          </div>
+          <!-- 型号筛选模式的搜索 -->
+          <div v-if="activeMode === 'filter' && filterResult" style="display: flex; gap: 10px; align-items: center;">
+            <el-input
+              v-model="filterSearchText"
+              placeholder="搜索产品型号..."
+              prefix-icon="el-icon-search"
+              clearable
+              size="small"
+              style="width: 250px;">
+            </el-input>
+          </div>
+        </div>
+
+        <div class="results-body">
+          <!-- 空状态 - BOM匹配 -->
+          <div v-if="activeMode === 'bom' && !matchData" class="empty-state">
+            <i class="el-icon-document"></i>
+            <div>请选择BOM表文件并点击"开始匹配"</div>
+          </div>
+
+          <!-- 空状态 - 型号筛选 -->
+          <div v-if="activeMode === 'filter' && !filterResult" class="empty-state">
+            <i class="el-icon-search"></i>
+            <div>请设置筛选条件并点击"查询"</div>
+          </div>
+
+          <!-- BOM匹配结果表格 -->
+          <el-table
+            v-if="activeMode === 'bom' && matchData"
+            :data="filteredResults"
+            stripe
+            border
+            :height="tableHeight"
+            style="flex: 1;"
+            :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
+            <el-table-column prop="originalIndex" label="#" width="50" align="center"></el-table-column>
+            <el-table-column prop="desc" label="物料描述" min-width="200">
+              <template slot-scope="scope">
+                {{ scope.row.desc }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="匹配状态" width="110" align="center">
+              <template slot-scope="scope">
+                <el-tag :type="getStatusType(scope.row.status)" size="mini" class="status-tag">
+                  {{ scope.row.status }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="matchCount" label="匹配数量" width="90" align="center">
+              <template slot-scope="scope">
+                <span :style="{color: scope.row.matchCount > 0 ? '#67C23A' : '#909399', fontWeight: '600'}">
+                  {{ scope.row.matchCount }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column
+              v-for="letter in matchData.letters"
+              :key="letter"
+              :label="letter"
+              :prop="'letter_' + letter"
+              min-width="150">
+              <template slot-scope="scope">
+                <div class="match-names">{{ scope.row['letter_' + letter] || '-' }}</div>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- 型号筛选结果表格 -->
+          <el-table
+            v-if="activeMode === 'filter' && filterResult"
+            :data="filteredFilterResult"
+            stripe
+            border
+            :height="tableHeight"
+            style="flex: 1;"
+            :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
+            <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
+            <el-table-column prop="productName" label="产品型号" min-width="180">
+              <template slot-scope="scope">
+                <span style="font-weight: 600; color: #409eff;">{{ scope.row.productName }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="series" label="系列" width="80" align="center">
+              <template slot-scope="scope">
+                <el-tag :type="getSeriesTagType(scope.row.series)" size="mini">{{ scope.row.series }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>
+            <el-table-column prop="tempCharacteristics" label="温度特性" width="100" align="center"></el-table-column>
+            <el-table-column prop="capacity" label="标称容量" min-width="120"></el-table-column>
+            <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"></el-table-column>
+            <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"></el-table-column>
+          </el-table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/vue@2.7.14/dist/vue.min.js"></script>
+  <script src="https://unpkg.com/element-ui@2.15.14/lib/index.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
