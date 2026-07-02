@@ -191,20 +191,55 @@ ipcMain.handle('export-excel', async (event, { outputPath, data, headers, letter
 // ========== 型号筛选 IPC 处理 ==========
 
 // 执行型号筛选
-ipcMain.handle('filter-products', async (event, { products, filterForm }) => {
+ipcMain.handle('filter-products', async (event, { products, filterForm, productNameOnly }) => {
   try {
     const list = products.list || [];
-    
+
+    // 如果 productNameOnly 为 true，只根据 productName 进行筛选
+    if (productNameOnly) {
+      if (!filterForm.productName || filterForm.productName.trim() === '') {
+        return { error: '请输入产品型号' };
+      }
+
+      let result = [];
+      const maxResults = 2000;
+      const productNameLower = filterForm.productName.toLowerCase();
+
+      for (const item of list) {
+        if (result.length >= maxResults) {
+          event.sender.send('filter-progress', { message: `已达到最大显示数量 ${maxResults}，请添加更多筛选条件` });
+          break;
+        }
+
+        // 只根据 productName 进行模糊匹配
+        if (item.productName && item.productName.toLowerCase().includes(productNameLower)) {
+          result.push({
+            productName: item.productName || '',
+            series: item.productName ? item.productName[0].toUpperCase() : '',
+            size: item.size || '',
+            tempCharacteristics: item.tempCharacteristics || '',
+            capacity: item.capacity || '',
+            capacityDeviation: item.capacityDeviation || '',
+            voltage: item.voltage || '',
+            specs: item.specs || []  // 返回规格书信息
+          });
+        }
+      }
+
+      return { data: result, maxReached: result.length >= maxResults };
+    }
+
+    // 正常筛选流程（根据所有筛选项）
     // 检查是否没有任何筛选条件
-    const hasCondition = 
-      filterForm.productName || 
+    const hasCondition =
+      filterForm.productName ||
       (filterForm.series && filterForm.series.length > 0) ||
       (filterForm.sizes && filterForm.sizes.length > 0) ||
       (filterForm.temps && filterForm.temps.length > 0) ||
       filterForm.capacityValue ||
       (filterForm.deviations && filterForm.deviations.length > 0) ||
       filterForm.voltageValue;
-    
+
     if (!hasCondition) {
       return { error: '请至少设置一个筛选条件，否则会返回全部25933个产品，可能导致卡顿' };
     }

@@ -561,14 +561,59 @@ new Vue({
       }
     },
 
-    // 解析并立即查询
+    // 仅根据型号查询（忽略其他筛选项）
     async parseAndQuery() {
-      const parseSuccess = this.parseAndFill();
-      if (parseSuccess) {
-        // 等待 Vue 更新完成
-        await this.$nextTick();
-        // 执行查询
-        await this.runFilter();
+      const text = this.filterForm.productName;
+      if (!text || text.trim() === '') {
+        this.$message.warning('请先输入产品型号');
+        return;
+      }
+
+      this.filtering = true;
+      this.loading = true;
+      this.loadingText = '正在筛选产品...';
+
+      try {
+        if (!this.products) {
+          const loaded = await this.loadProducts();
+          if (!loaded) return;
+        }
+
+        // 只根据 productName 进行筛选，忽略其他筛选项
+        const result = await ipcRenderer.invoke('filter-products', {
+          products: this.products,
+          filterForm: {
+            productName: this.filterForm.productName
+          },
+          productNameOnly: true  // 标记只根据型号匹配
+        });
+
+        if (result.error) {
+          this.$message.warning(result.error);
+          return;
+        }
+
+        // 冻结每条结果的 specs，避免 Vue 深度响应式化
+        this.filterResult = result.data.map(item => ({
+          ...item,
+          specs: Object.freeze(item.specs || [])
+        }));
+
+        // 显示筛选结果
+        if (result.maxReached) {
+          this.$message.warning(`筛选结果已达最大显示数量 (2000条)，建议添加更多筛选条件以缩小范围`);
+        } else {
+          this.$message.success(`筛选完成，共找到 ${result.data.length} 个产品`);
+        }
+
+        this.$nextTick(() => {
+          this.calcTableHeight();
+        });
+      } catch (err) {
+        this.$message.error('筛选失败: ' + err.message);
+      } finally {
+        this.filtering = false;
+        this.loading = false;
       }
     },
 
