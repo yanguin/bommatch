@@ -1,4 +1,4 @@
-# viiyong BOM型号匹配工具
+# BOM型号匹配工具
 
 基于 Electron + Vue.js 的桌面应用，支持微容MLCC和强茂MOSFET产品型号匹配筛选。
 
