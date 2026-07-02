@@ -930,7 +930,7 @@
             <el-table-column
               v-for="letter in currentSheet.displayLetters"
               :key="letter"
-              :label="letter"
+              :label="getSeriesLabel(letter)"
               :prop="'letter_' + letter"
               min-width="150">
               <template slot-scope="scope">
@@ -1007,7 +1007,7 @@
             </el-table-column>
             <el-table-column prop="series" label="系列" width="80" align="center">
               <template slot-scope="scope">
-                <el-tag :type="getSeriesTagType(scope.row.series)" size="mini">{{ scope.row.series }}</el-tag>
+                <el-tag :type="getSeriesTagType(scope.row.series)" size="mini">{{ getSeriesLabel(scope.row.series) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>

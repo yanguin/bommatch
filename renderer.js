@@ -366,7 +366,7 @@ new Vue({
           if (!raw) continue;
           const { rows, headerIdx, results, origWidth } = raw;
           const letters = sheetResult.displayLetters || [];
-          const extraHeaders = [...letters, '匹配数量', '匹配状态'];
+          const extraHeaders = [...letters.map(l => this.getSeriesLabel(l)), '匹配数量', '匹配状态'];
           const aoa = [];
 
           for (let i = 0; i <= headerIdx; i++) {
@@ -732,6 +732,17 @@ new Vue({
         'V': 'success'
       };
       return typeMap[series] || 'info';
+    },
+
+    // 获取系列名称（用于表头显示）
+    getSeriesLabel(letter) {
+      const labelMap = {
+        'A': 'A系列',
+        'T': 'T系列',
+        'B': 'B系列',
+        'V': 'V系列'
+      };
+      return labelMap[letter] || letter;
     },
 
     // ============ 品牌切换 ============
