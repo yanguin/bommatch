@@ -439,9 +439,9 @@ new Vue({
           spec = matcherCore.parseProductName(text);
         }
 
-        // 如果产品型号解析失败，尝试使用 parseDesc 解析规格描述
+        // 如果产品型号解析失败，尝试使用宽松解析提取规格字段
         if (!spec) {
-          spec = matcherCore.parseDesc(text);
+          spec = matcherCore.parseDescLoose(text);
         }
 
         if (!spec) {
@@ -552,7 +552,20 @@ new Vue({
         // 清空输入框
         this.filterForm.productName = '';
 
-        this.$message.success('解析成功，已自动填充筛选条件');
+        // 统计已识别的字段
+        const identified = [];
+        if (spec.series) identified.push('系列');
+        if (spec.size) identified.push('尺寸');
+        if (spec.temp) identified.push('介质');
+        if (spec.cap !== null && spec.cap !== undefined) identified.push('容量');
+        if (spec.dev) identified.push('偏差');
+        if (spec.volt !== null && spec.volt !== undefined) identified.push('电压');
+
+        if (identified.length > 0) {
+          this.$message.success(`解析成功，已填充: ${identified.join('、')}`);
+        } else {
+          this.$message.warning('解析成功，但未识别到有效字段');
+        }
         return true;
 
       } catch (err) {

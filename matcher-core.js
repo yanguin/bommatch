@@ -255,7 +255,148 @@ function parseProductName(name) {
 // ---------- 解析 BOM 物料描述 ----------
 function parseDesc(desc) {
   if (!desc) return null;
-  let text = String(desc).replace(/，/g, ',').replace(/μ/g, 'µ').trim();
+  // 统一字符：全角逗号→半角，μ→µ，全角百分号→半角
+  let text = String(desc).replace(/，/g, ',').replace(/μ/g, 'µ').replace(/％/g, '%').trim();
+
+  // ===== 中文电容描述格式 =====
+  // 格式：电容[容量]/[电压] ... (各种变体)
+  // 例如：电容0.1UF/50V 0603±10％  X7R
+  //       电容22uf/16V 封装1206±20%，x7R
+  //       电容10UF/25V 1206±10%
+  //       贴片电容 22UF/25V X7R 1210±10%
+  //       电容0.1UF/50V(X7R) 0402 ±10%
+  //       电容2.2uF/100V/X7S/±10%/1206
+  //       电容 4.7uF±10%/100V 封装：1210 材质：X7S
+  //       电容8.2pF/50V NPO ±0.25pF
+  if (text.startsWith('电容') || text.startsWith('贴片电容')) {
+    // 移除"贴片电容"或"电容"前缀
+    let content = text.replace(/^贴片电容\s*/i, '').replace(/^电容\s*/i, '').trim();
+
+    // 尝试提取容量 (可能带偏差，如 4.7uF±10%)
+    // 容量后可能是 / 或空格
+    const capMatch = content.match(/^([0-9.]+\s*(?:pF|nF|uF|µF|mF|p|n|u|µ))\s*(±\s*\d+(?:\.\d+)?%?)?\s*([\/\s])/i);
+    if (capMatch) {
+      const capStr = capMatch[1];
+      const cap = capToPf(capStr);
+      const preDev = capMatch[2] ? normDev(capMatch[2]) : '';
+      const separator = capMatch[3] || ' ';
+      if (cap !== null) {
+        // 提取电压
+        let volt = null;
+        let remaining = content.substring(capMatch[0].length).trim();
+
+        // 格式1: 容量/电压/介质/偏差/尺寸 (全斜杠格式)
+        // 例如：电容2.2uF/100V/X7S/±10%/1206
+        // 或者：容量偏差/电压/尺寸/材质 (如 4.7uF±10%/100V/...)
+        if (separator === '/' && remaining.includes('/')) {
+          const slashParts = remaining.split('/').map(s => s.trim()).filter(s => s);
+          if (slashParts.length >= 1) {
+            // 第一部分是电压
+            volt = voltToNum(slashParts[0]);
+            let temp = null;
+            let dev = preDev;
+            let size = null;
+
+            // 遍历剩余部分
+            for (let i = 1; i < slashParts.length; i++) {
+              const part = slashParts[i];
+              if (!temp && RE_TEMP.test(part)) { temp = tempCode(part); continue; }
+              if (!dev && RE_DEV.test(part)) { dev = normDev(part); continue; }
+              if (!size && RE_SIZE.test(part)) { size = sizeInch(part); continue; }
+            }
+
+            // 允许缺少介质的情况
+            if (volt !== null && size) {
+              return { cap, dev: dev || '', volt, temp: temp || '', size, raw: desc };
+            }
+          }
+        }
+
+        // 格式2: 容量/电压 或 容量 电压 (后面是其他信息)
+        // 提取电压 (电压可能在容量后面，用/分隔，也可能直接跟数字和V)
+        const voltMatch = remaining.match(/^(\d+(?:\.\d+)?\s*[kK]?[vV])/i);
+        if (voltMatch) {
+          volt = voltToNum(voltMatch[1]);
+          remaining = remaining.substring(voltMatch[0].length).trim();
+        }
+
+        if (volt !== null) {
+          // 从剩余文本中提取介质、偏差、尺寸
+          let temp = null;
+          let dev = preDev; // 使用预先解析的偏差
+          let size = null;
+
+          // 先尝试从括号中提取介质 (如 (X7R) 或 （X7R）)
+          const tempParenMatch = remaining.match(/[（(]\s*(C0G|COG|NPO|NP0|[CXYZ]\d[A-Z])\s*[)）]/i);
+          if (tempParenMatch) {
+            temp = tempCode(tempParenMatch[1]);
+            remaining = remaining.replace(tempParenMatch[0], ' ');
+          }
+
+          // 移除品牌信息和"封装:"、"材质:"等标签
+          remaining = remaining.replace(/[（(][^)）]*[)）]/g, ' ') // 移除其他括号内的信息
+                                 .replace(/封装[：:]\s*/i, ' ')
+                                 .replace(/材质[：:]\s*/i, ' ')
+                                 .replace(/封装/i, ' ')
+                                 .replace(/[，,]/g, ' ')
+                                 .trim();
+
+          // 尝试匹配 NPO (可能单独出现)
+          if (!temp && /\bNPO\b/i.test(remaining)) {
+            temp = 'C0G';
+            remaining = remaining.replace(/\bNPO\b/i, ' ');
+          }
+
+          // 尝试匹配带偏差的 pF 格式 (如 ±0.25pF)
+          const pfDevMatch = remaining.match(/(±\s*\d+(?:\.\d+)?\s*pF)/i);
+          if (pfDevMatch && !dev) {
+            dev = normDev(pfDevMatch[1]);
+            remaining = remaining.replace(pfDevMatch[1], ' ');
+          }
+
+          // 按空格/斜杠分割剩余部分
+          const parts = remaining.split(/[\s\/]+/).map(s => s.trim()).filter(s => s);
+
+          for (const part of parts) {
+            if (!temp && RE_TEMP.test(part)) { temp = tempCode(part); continue; }
+            if (!dev && RE_DEV.test(part)) { dev = normDev(part); continue; }
+            // 尺寸可能带偏差，如 0603±10%，需要一起提取
+            if (!size) {
+              const sizeDevMatch = part.match(/^(\d{4,6})\s*(±\s*\d+(?:\.\d+)?%?)$/i);
+              if (sizeDevMatch) {
+                size = sizeInch(sizeDevMatch[1]);
+                if (!dev) dev = normDev(sizeDevMatch[2]);
+                continue;
+              }
+              // 单独的尺寸
+              if (RE_SIZE.test(part)) { size = sizeInch(part); continue; }
+            }
+          }
+
+          // 如果没找到介质，尝试从文本中提取X5R/X7R等
+          if (!temp) {
+            const tempMatch = remaining.match(/(C0G|COG|NPO|NP0|[CXYZ]\d[A-Z])/i);
+            if (tempMatch) temp = tempCode(tempMatch[1]);
+          }
+
+          // 尝试提取尺寸（可能带有偏差，如 0603±10%）
+          if (!size) {
+            const sizeDevMatch = remaining.match(/(\d{4})\s*(±\s*\d+(?:\.\d+)?%?)/i);
+            if (sizeDevMatch) {
+              size = sizeInch(sizeDevMatch[1]);
+              if (!dev) dev = normDev(sizeDevMatch[2]);
+            }
+          }
+
+          // 如果有尺寸，但缺少介质，允许返回（介质为空字符串）
+          // 这样在匹配阶段可以忽略介质维度进行匹配
+          if (size) {
+            return { cap, dev: dev || '', volt, temp: temp || '', size, raw: desc };
+          }
+        }
+      }
+    }
+  }
 
   // ===== 中文描述格式 =====
   // 格式：<尺寸>封装...中文..._<容量>/<公差>/<电压>[/<介质>]
@@ -385,6 +526,75 @@ function parseDesc(desc) {
   }
   if (cap === null || volt === null || temp === null || size === null) return null;
   return { cap, dev: dev || '', volt, temp, size, raw: desc };
+}
+
+// ---------- 宽松解析（用于型号筛选场景） ----------
+// 与 parseDesc 不同，不要求所有字段都存在，只要识别到任一字段即返回
+// 用于在型号筛选输入框中输入规格描述时，自动填充已识别的筛选项
+function parseDescLoose(desc) {
+  if (!desc) return null;
+
+  // 先尝试严格解析，成功则直接返回
+  const strict = parseDesc(desc);
+  if (strict) return strict;
+
+  // 宽松解析：从文本中提取所有能识别的字段
+  let text = String(desc).replace(/，/g, ',').replace(/μ/g, 'µ').replace(/％/g, '%').trim();
+
+  let cap = null, dev = '', volt = null, temp = '', size = '';
+  let matchedText = '';
+
+  // 1. 提取容量（带单位，优先匹配长单位 pF/nF/uF/µF/mF，再匹配单字母 p/n/u/µ）
+  const capMatch = text.match(/([0-9.]+)\s*(pF|nF|uF|µF|mF)/i) || text.match(/([0-9.]+)\s*(p|n|u|µ)\b/i);
+  if (capMatch) {
+    const v = capToPf(capMatch[1] + capMatch[2]);
+    if (v !== null) {
+      cap = v;
+      matchedText += capMatch[0] + ' ';
+    }
+  }
+
+  // 2. 提取电压（数字+V/KV，后面不能跟字母，避免误匹配型号）
+  const voltMatch = text.match(/(\d+(?:\.\d+)?)\s*[kK]?[vV](?![a-zA-Z])/);
+  if (voltMatch) {
+    volt = voltToNum(voltMatch[1] + 'V');
+    if (volt !== null) matchedText += voltMatch[0] + ' ';
+  }
+
+  // 3. 提取介质（C0G/X5R/X7R/NPO 等）
+  const tempMatch = text.match(/\b(C0G|COG|NPO|NP0|X5R|X6S|X6T|X7R|X7S|X7T|X8G|X8L|X3H)\b/i);
+  if (tempMatch) {
+    temp = tempCode(tempMatch[1]);
+    if (temp) matchedText += tempMatch[0] + ' ';
+  }
+
+  // 4. 提取偏差（±数字% 或 ±数字pF）
+  const devMatch = text.match(/(±\s*\d+(?:\.\d+)?\s*(?:%|pF))/i);
+  if (devMatch) {
+    dev = normDev(devMatch[1]);
+    if (dev) matchedText += devMatch[0] + ' ';
+  }
+
+  // 5. 提取尺寸（4位数字）—— 从未匹配的文本中提取，避免误匹配容量/电压中的数字
+  let remaining = text;
+  if (capMatch && cap !== null) remaining = remaining.replace(capMatch[0], ' ');
+  if (voltMatch && volt !== null) remaining = remaining.replace(voltMatch[0], ' ');
+  if (tempMatch && temp) remaining = remaining.replace(tempMatch[0], ' ');
+  if (devMatch && dev) remaining = remaining.replace(devMatch[0], ' ');
+  // 移除括号内的备注信息
+  remaining = remaining.replace(/[（(][^)）]*[)）]/g, ' ');
+
+  const sizeMatch = remaining.match(/\b(\d{4})\b/);
+  if (sizeMatch) {
+    size = sizeInch(sizeMatch[1]) || '';
+  }
+
+  // 至少识别到一个有效字段才返回
+  if (cap !== null || volt !== null || temp || size || dev) {
+    return { cap, dev, volt, temp, size, raw: desc };
+  }
+
+  return null;
 }
 
 // ---------- 系列识别 ----------
@@ -700,4 +910,4 @@ function runMatch(bomPath, products, options = {}) {
   };
 }
 
-module.exports = { runMatch, parseDesc, buildIndex, matchSpec, getSeries, parseProductName };
+module.exports = { runMatch, parseDesc, parseDescLoose, buildIndex, matchSpec, getSeries, parseProductName };
