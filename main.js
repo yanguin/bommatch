@@ -117,6 +117,16 @@ ipcMain.handle('load-products', async (event) => {
   return data;
 });
 
+// 加载强茂产品数据
+ipcMain.handle('load-qm-products', async (event) => {
+  const jsonPath = path.join(__dirname, 'data/qiangmao_products.json');
+  if (!fs.existsSync(jsonPath)) {
+    return { error: '强茂产品数据文件不存在' };
+  }
+  const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  return data;
+});
+
 // 执行匹配
 ipcMain.handle('run-match', async (event, { bomPath, products, options }) => {
   try {
@@ -312,7 +322,7 @@ ipcMain.handle('filter-products', async (event, { products, filterForm }) => {
         if (isNaN(itemVolt) || Math.abs(itemVolt - targetVolt) > 0.001) continue;
       }
 
-      // 添加系列字段
+      // 添加系列字段 + specs
       result.push({
         productName: item.productName || '',
         series: item.productName ? item.productName[0].toUpperCase() : '',
@@ -320,7 +330,8 @@ ipcMain.handle('filter-products', async (event, { products, filterForm }) => {
         tempCharacteristics: item.tempCharacteristics || '',
         capacity: item.capacity || '',
         capacityDeviation: item.capacityDeviation || '',
-        voltage: item.voltage || ''
+        voltage: item.voltage || '',
+        specs: item.specs || []
       });
     }
 
@@ -331,33 +342,36 @@ ipcMain.handle('filter-products', async (event, { products, filterForm }) => {
 });
 
 // 导出筛选结果Excel
-ipcMain.handle('export-filter-excel', async (event, { outputPath, data }) => {
+ipcMain.handle('export-filter-excel', async (event, { outputPath, data, customHeaders }) => {
   try {
-    const headers = ['产品型号', '系列', '尺寸(Inch/mm)', '温度特性', '标称容量', '容量偏差', '额定电压(Vdc)'];
-    const aoa = [headers];
+    let headers, aoa;
 
-    for (const item of data) {
-      aoa.push([
-        item.productName || '',
-        item.series || '',
-        item.size || '',
-        item.tempCharacteristics || '',
-        item.capacity || '',
-        item.capacityDeviation || '',
-        item.voltage || ''
-      ]);
+    if (customHeaders && Array.isArray(customHeaders) && customHeaders.length > 0) {
+      // 通用导出模式：使用自定义表头，data 是对象数组
+      headers = customHeaders;
+      aoa = [headers];
+      for (const item of data) {
+        aoa.push(headers.map(h => item[h] !== undefined ? item[h] : ''));
+      }
+    } else {
+      // 微容默认格式
+      headers = ['产品型号', '系列', '尺寸(Inch/mm)', '温度特性', '标称容量', '容量偏差', '额定电压(Vdc)'];
+      aoa = [headers];
+      for (const item of data) {
+        aoa.push([
+          item.productName || '',
+          item.series || '',
+          item.size || '',
+          item.tempCharacteristics || '',
+          item.capacity || '',
+          item.capacityDeviation || '',
+          item.voltage || ''
+        ]);
+      }
     }
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [
-      { wch: 25 }, // 产品型号
-      { wch: 8 },  // 系列
-      { wch: 18 }, // 尺寸
-      { wch: 12 }, // 温度特性
-      { wch: 15 }, // 标称容量
-      { wch: 12 }, // 容量偏差
-      { wch: 15 }  // 额定电压
-    ];
+    ws['!cols'] = headers.map(() => ({ wch: 15 }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');

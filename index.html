@@ -505,7 +505,7 @@
               <el-button slot="append" @click="descColumnName='物料描述'" size="small">默认</el-button>
             </el-input>
             <div style="margin-top: 8px; font-size: 12px; color: #909399;">
-              常用列名：物料描述、物料规格、PLMTITLE、规格型号等
+              常用列名：物料描述、物料规格、PLMTITLE、规格型号、Description等
             </div>
             <!-- <div style="margin-top: 8px; padding: 8px 10px; background: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff; font-size: 12px; color: #606266; line-height: 1.7;">
               支持的规格格式（字段顺序不限，公差可省略±号）：<br>
@@ -612,21 +612,21 @@
               clearable
               @keyup.enter.native="parseAndFill">
             </el-input>
-            <div style="margin-top: 8px; display: flex; gap: 8px;">
-              <el-button size="small" type="primary" plain @click="parseAndFill" icon="el-icon-edit-outline">
+            <div class="filter-actions">
+              <el-button type="primary" @click="parseAndFill" icon="el-icon-edit-outline" style="flex: 1;">
                 解析
               </el-button>
-              <el-button size="small" type="success" @click="parseAndQuery" icon="el-icon-search">
+              <el-button type="success" @click="parseAndQuery" icon="el-icon-search" style="flex: 1;">
                 查询
               </el-button>
             </div>
             <div style="margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.6;">
-              支持多种格式：<br>
+              <!-- 支持多种格式：<br>
               • 逗号带单位：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code><br>
               • 斜杠EIA码：<code style="color:#e96900;">C/222/K/50/X5R/0402</code><br>
               • 贴片电容：<code style="color:#e96900;">贴片电容,10uF(106)/10V,±10%,X5R,0603</code><br>
               • 中文封装：<code style="color:#e96900;">0402封装..._100nF/±10%/50V/X7R</code><br>
-              • MLCC型号：<code style="color:#e96900;">MLCC,106,K,6.3V,X5R,0603</code><br>
+              • MLCC型号：<code style="color:#e96900;">MLCC,106,K,6.3V,X5R,0603</code><br> -->
               输入后点"解析"自动填充各筛选项
             </div>
           </div>
@@ -745,26 +745,44 @@
 
         <!-- ============ 强茂品牌 ============ -->
         <div v-if="currentBrand === 'qiangmao'">
-          <!-- 产品型号 -->
+          <!-- 产品型号输入（多行） -->
           <div class="filter-section">
-            <div class="filter-section-title">产品型号</div>
+            <div class="filter-section-title">产品型号（每行一个，支持多个）</div>
             <el-input
-              v-model="qmFilterForm.productName"
-              placeholder="输入产品型号关键字"
-              size="small"
-              clearable
-              @keyup.enter.native="runQmFilter">
+              v-model="qmInputText"
+              type="textarea"
+              :rows="8"
+              placeholder="PJQ5588&#10;PTMQC046N03LSC1&#10;PSMD126N10NSC1&#10;PSMQC075N10LSC1"
+              size="small">
             </el-input>
           </div>
 
           <!-- 操作按钮 -->
           <div class="filter-actions">
-            <el-button type="primary" @click="runQmFilter" :loading="qmFiltering" icon="el-icon-search" style="flex: 1;">
+            <el-button type="primary" @click="parseQmInput" icon="el-icon-edit-outline" style="flex: 1;">
+              解析
+            </el-button>
+            <el-button type="success" @click="runQmFilter" :loading="qmFiltering" icon="el-icon-search" style="flex: 1;">
               查询
             </el-button>
-            <el-button @click="resetQmFilter" icon="el-icon-refresh" style="flex: 1;">
-              清空
-            </el-button>
+          </div>
+
+          <!-- 解析出的型号列表（复选框） -->
+          <div v-if="qmParsedItems.length > 0" class="filter-section">
+            <div class="filter-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>已解析型号（{{ qmParsedItems.length }}个）</span>
+              <div style="display: flex; gap: 8px;">
+                <el-button size="mini" type="text" @click="toggleQmAll(true)">全选</el-button>
+                <el-button size="mini" type="text" @click="toggleQmAll(false)">全不选</el-button>
+                <el-button size="mini" type="text" @click="clearQmParsed" style="color: #f56c6c;">清空</el-button>
+              </div>
+            </div>
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 4px; padding: 8px;">
+              <div v-for="(item, idx) in qmParsedItems" :key="idx" style="display: flex; align-items: center; padding: 4px 0; border-bottom: 1px solid #f5f7fa;">
+                <el-checkbox v-model="item.checked" style="margin-right: 8px;"></el-checkbox>
+                <span :style="{ color: item.checked ? '#409eff' : '#909399', fontWeight: item.checked ? '600' : 'normal', fontSize: '13px' }">{{ item.partNumber }}</span>
+              </div>
+            </div>
           </div>
 
           <!-- 筛选结果统计 -->
@@ -794,7 +812,7 @@
               <span v-if="activeMode === 'bom'">匹配结果</span>
               <span v-else>筛选结果</span>
               <span v-if="activeMode === 'bom' && matchData" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
-                共 {{ filteredResults.length }} 条（总 {{ currentSheet ? currentSheet.data.results.length : 0 }} 条）
+                共 {{ filteredResults.length }} 条（总 {{ currentSheet ? currentSheet.data.tableData.length : 0 }} 条）
               </span>
               <span v-if="activeMode === 'filter' && filterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
                 共 {{ filteredFilterResult.length }} 条
@@ -919,6 +937,36 @@
                 <div class="match-names">{{ scope.row['letter_' + letter] || '-' }}</div>
               </template>
             </el-table-column>
+            <!-- 规格书列 -->
+            <el-table-column label="规格书" width="80" align="center">
+              <template slot-scope="scope">
+                <!-- 无匹配或无规格书 -->
+                <span v-if="scope.row.matchCount === 0 || !scope.row.specsList || scope.row.specsList.length === 0" style="color:#909399;">-</span>
+                <!-- 单个规格书：直接点击图标 -->
+                <el-link v-else-if="scope.row.specsList.length === 1"
+                  type="primary"
+                  icon="el-icon-document"
+                  @click="openSpecUrl(scope.row.specsList[0].FileUrl)"
+                  title="点击打开规格书">
+                </el-link>
+                <!-- 多个规格书：popover 选择 -->
+                <el-popover v-else
+                  placement="top"
+                  trigger="click"
+                  width="200">
+                  <div style="display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto;">
+                    <el-link v-for="(spec, idx) in scope.row.specsList" :key="idx"
+                      type="primary"
+                      icon="el-icon-document"
+                      @click="openSpecUrl(spec.FileUrl)"
+                      style="font-size:12px;">
+                      {{ spec.Title || '规格书' }}
+                    </el-link>
+                  </div>
+                  <el-button slot="reference" type="primary" size="mini" icon="el-icon-document" circle title="多个规格书，点击选择"></el-button>
+                </el-popover>
+              </template>
+            </el-table-column>
           </el-table>
 
           <!-- 当前 sheet 被跳过的提示 -->
@@ -967,13 +1015,35 @@
             <el-table-column prop="capacity" label="标称容量" min-width="120"></el-table-column>
             <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"></el-table-column>
             <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"></el-table-column>
+            <!-- 规格书列 -->
+            <el-table-column label="规格书" width="80" align="center">
+              <template slot-scope="scope">
+                <span v-if="!scope.row.specs || scope.row.specs.length === 0" style="color:#909399;">-</span>
+                <el-link v-else-if="scope.row.specs.length === 1"
+                  type="primary" icon="el-icon-document"
+                  @click="openSpecUrl(scope.row.specs[0].FileUrl)"
+                  title="点击打开规格书">
+                </el-link>
+                <el-popover v-else placement="top" trigger="click" width="200">
+                  <div style="display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto;">
+                    <el-link v-for="(spec, idx) in scope.row.specs" :key="idx"
+                      type="primary" icon="el-icon-document"
+                      @click="openSpecUrl(spec.FileUrl)"
+                      style="font-size:12px;">
+                      {{ spec.Title || '规格书' }}
+                    </el-link>
+                  </div>
+                  <el-button slot="reference" type="primary" size="mini" icon="el-icon-document" circle title="多个规格书，点击选择"></el-button>
+                </el-popover>
+              </template>
+            </el-table-column>
           </el-table>
 
           <!-- ============ 强茂品牌 ============ -->
           <!-- 空状态 - 强茂筛选 -->
           <div v-if="currentBrand === 'qiangmao' && !qmFilterResult" class="empty-state">
             <i class="el-icon-search"></i>
-            <div>请输入产品型号并点击"查询"</div>
+            <div>请输入产品型号，点击"解析"后勾选，再点击"查询"</div>
           </div>
 
           <!-- 强茂 - 筛选结果表格 -->
@@ -986,16 +1056,33 @@
             style="flex: 1;"
             :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
             <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
-            <el-table-column prop="productName" label="产品型号" min-width="180">
+            <el-table-column prop="partNumber" label="产品型号" min-width="180">
               <template slot-scope="scope">
-                <span style="font-weight: 600; color: #409eff;">{{ scope.row.productName }}</span>
+                <span style="font-weight: 600; color: #409eff;">{{ scope.row.partNumber }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>
-            <el-table-column prop="tempCharacteristics" label="温度特性" width="100" align="center"></el-table-column>
-            <el-table-column prop="capacity" label="标称容量" min-width="120"></el-table-column>
-            <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"></el-table-column>
-            <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"></el-table-column>
+            <el-table-column prop="package" label="封装" min-width="140"></el-table-column>
+            <el-table-column prop="polarity" label="极性" width="70" align="center"></el-table-column>
+            <el-table-column prop="config" label="配置" width="80" align="center"></el-table-column>
+            <el-table-column prop="vds" label="VDS(V)" width="80" align="center"></el-table-column>
+            <el-table-column prop="vgs" label="VGS(±V)" width="85" align="center"></el-table-column>
+            <el-table-column prop="id" label="ID(A)" width="70" align="center"></el-table-column>
+            <el-table-column prop="rdsOn_10V" label="RDS(on)@10V(mΩ)" width="140" align="center"></el-table-column>
+            <el-table-column prop="rdsOn_4_5V" label="RDS(on)@4.5V(mΩ)" width="140" align="center"></el-table-column>
+            <el-table-column prop="ciss" label="Ciss(pF)" width="90" align="center"></el-table-column>
+            <el-table-column prop="vgsTh" label="VGS(th)(V)" width="100" align="center"></el-table-column>
+            <el-table-column prop="qg_10V" label="Qg@10V(nC)" width="100" align="center"></el-table-column>
+            <!-- 规格书列 -->
+            <el-table-column label="规格书" width="80" align="center">
+              <template slot-scope="scope">
+                <el-link v-if="scope.row.specUrl"
+                  type="primary" icon="el-icon-document"
+                  @click="openSpecUrl(scope.row.specUrl)"
+                  title="点击打开规格书">
+                </el-link>
+                <span v-else style="color:#909399;">-</span>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </div>

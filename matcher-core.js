@@ -112,6 +112,146 @@ const RE_VOLT = /^\d+(?:\.\d+)?\s*[kK]?[vV]$/;
 const RE_TEMP = /^(C0G|COG|NPO|NP0|[CXYZ]\d[A-Z])\b/i;
 const RE_SIZE = /^(SMD|SM)?\s*\d{4,6}(?![0-9])/i;
 
+// ---------- 解析微容产品型号名称 ----------
+// 型号格式示例：T562G1210C0G102NPZ, B106M1210X5R500NRZ, B151J0805SPC251NKT
+// 命名规则：
+//   第1位：系列代码（A/T/B/V）
+//   第2-4位：标称电容量（单位：pF），前两位数码为有效数字，后一位数码为10的幂数；
+//            当标称电容量小于10pF时，以字母R表示小数点。
+//            如：104=100000pF; 4R7=4.7pF; 0R5=0.5pF; R75=0.75pF
+//   第5位：公差代码（A=±0.05pF，B=±0.1pF, C=±0.25pF, D=±0.5pF, F=±1%,G=±2%, J=±5%, K=±10%, M=±20%）
+//   第6-9位：尺寸代码（0201，0402，0603，0805，1206，1210）
+//   第10-12/13位：温度特性（如C0G, X5R, X7R）
+//   第13-15/14-16位：电压等级EIA码（如2R5=2.5Vdc, 4R0=4.0Vdc, 6R3=6.3Vdc, 100=10Vdc, 160=16Vdc,
+//            250=25Vdc, 350=35Vdc, 500=50Vdc, 101=100Vdc, 201=200Vdc, 251=250Vdc, 501=500Vdc,
+//            631=630Vdc, 102=1000Vdc）
+//   后面：其他参数
+function parseProductName(name) {
+  if (!name) return null;
+  const s = String(name).trim().toUpperCase();
+
+  // 验证基本格式：以A/T/B/V开头，至少12位
+  const firstChar = s[0];
+  if (!['A', 'T', 'B', 'V'].includes(firstChar)) return null;
+  if (s.length < 12) return null;
+
+  try {
+    // 1. 系列识别
+    const series = firstChar;
+
+    // 2. 容量码（第2-4位，3位，可能是纯数字或含R）
+    // 规则：前两位为有效数字，后一位为乘数；或含R表示小数点
+    // 如：104=10×10⁴=100000pF, 4R7=4.7pF, 0R5=0.5pF, R75=0.75pF
+    const capCode = s.substring(1, 4);
+    // 验证容量码格式：纯数字或含R
+    if (!/^[\dR]{3}$/.test(capCode)) return null;
+
+    // 解析容量值
+    let capPf = null;
+    if (capCode.includes('R')) {
+      // 含R的格式：R表示小数点
+      capPf = parseFloat(capCode.replace('R', '.'));
+    } else {
+      // 纯数字EIA码：前两位有效数字，第三位乘数
+      const sig = parseInt(capCode.substring(0, 2), 10);
+      const mult = parseInt(capCode[2], 10);
+      if (!isNaN(sig) && !isNaN(mult)) {
+        capPf = sig * Math.pow(10, mult);
+      }
+    }
+    if (capPf === null || isNaN(capPf)) return null;
+
+    // 3. 公差代码（第5位字母）
+    const devLetter = s[4];
+    const dev = devLetterToNorm(devLetter);
+
+    // 4. 尺寸代码（第6-9位，4位数字）
+    const sizeCode = s.substring(5, 9);
+    if (!/^\d{4}$/.test(sizeCode)) return null;
+
+    // 尺寸代码映射到显示格式
+    const sizeMap = {
+      '0201': '0201/0603M',
+      '0402': '0402/1005M',
+      '0603': '0603/1608M',
+      '0805': '0805/2012M',
+      '1206': '1206/3216M',
+      '1210': '1210/3225M',
+      '2220': '2220/5750M'
+    };
+    const size = sizeMap[sizeCode] || sizeCode;
+
+    // 5. 温度特性（从第10位开始，可能是C0G/X5R/X7R等）
+    // 需要根据不同格式识别
+    let temp = null;
+    let voltCode = null;
+    let volt = null;
+
+    // 尝试匹配温度特性：C0G, X5R, X7R, X6S, X6T, X7S, X7T, X8G, X8L, X3H
+    const tempPatterns = ['C0G', 'X5R', 'X7R', 'X6S', 'X6T', 'X7S', 'X7T', 'X8G', 'X8L', 'X3H'];
+    const tempStartIdx = 9;
+
+    for (const tp of tempPatterns) {
+      if (s.substring(tempStartIdx, tempStartIdx + tp.length) === tp) {
+        temp = tp;
+        // 电压码在温度特性后面，3位（可能是数字或含R）
+        voltCode = s.substring(tempStartIdx + tp.length, tempStartIdx + tp.length + 3);
+        break;
+      }
+    }
+
+    // 如果没有匹配到标准温度特性，可能是旧格式（如SPC）
+    // 例如：B151J0805SPC251NKT
+    if (!temp) {
+      // 尝试匹配其他温度特性格式
+      // SPC 可能表示某种特性，但数据中显示为 C0G
+      // 这种格式下温度特性需要从产品数据中获取，无法直接从型号解析
+      // 但电压码可能在后面（如251）
+      const altTempMatch = s.match(/(?:SPC|SP)(\d{3})/i);
+      if (altTempMatch) {
+        // 对于SPC格式，假设温度特性为C0G（根据数据观察）
+        temp = 'C0G';
+        voltCode = altTempMatch[1];
+      }
+    }
+
+    if (!temp) return null;
+
+    // 6. 电压等级EIA码解析
+    // 规则：纯数字时，前两位有效数字，第三位乘数；
+    //       含R时，R表示小数点
+    // 如：2R5=2.5V, 4R0=4.0V, 6R3=6.3V, 100=10V, 160=16V, 250=25V, 350=35V, 500=50V,
+    //     101=100V, 201=200V, 251=250V, 501=500V, 631=630V, 102=1000V
+    if (voltCode && /^[\dR]{3}$/.test(voltCode)) {
+      if (voltCode.includes('R')) {
+        // 含R的格式：R表示小数点
+        volt = parseFloat(voltCode.replace('R', '.'));
+      } else {
+        // 纯数字EIA码：前两位有效数字，第三位乘数
+        const sig = parseInt(voltCode.substring(0, 2), 10);
+        const mult = parseInt(voltCode[2], 10);
+        if (!isNaN(sig) && !isNaN(mult)) {
+          volt = sig * Math.pow(10, mult);
+        }
+      }
+    }
+
+    if (volt === null || isNaN(volt)) return null;
+
+    return {
+      series,
+      cap: capPf,
+      dev,
+      size,
+      temp,
+      volt,
+      raw: name
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
 // ---------- 解析 BOM 物料描述 ----------
 function parseDesc(desc) {
   if (!desc) return null;
@@ -287,7 +427,8 @@ function buildIndex(products, selectedSeries) {
     index.get(key).push({
       name: it.productName,
       dev: normDev(it.capacityDeviation),
-      series: series
+      series: series,
+      specs: it.specs || []
     });
   }
 
@@ -327,6 +468,7 @@ function matchSpec(spec, index, options = {}) {
     const exact = cands.filter((c) => c.dev === spec.dev);
     if (exact.length > 0) {
       return {
+        items: exact.map((c) => ({ name: c.name, specs: c.specs })),
         names: exact.map((c) => c.name),
         status: '精确匹配',
         matchType: 'exact'
@@ -334,6 +476,7 @@ function matchSpec(spec, index, options = {}) {
     }
     // 忽略偏差匹配
     return {
+      items: cands.map((c) => ({ name: c.name, specs: c.specs })),
       names: cands.map((c) => c.name),
       status: '忽略偏差',
       matchType: 'ignore_dev'
@@ -359,13 +502,14 @@ function matchSpec(spec, index, options = {}) {
 
   if (fuzzyResults.length > 0) {
     return {
+      items: fuzzyResults.map((c) => ({ name: c.name, specs: c.specs })),
       names: fuzzyResults.map((c) => c.name),
       status: '容差匹配',
       matchType: 'fuzzy'
     };
   }
 
-  return { names: [], status: '未匹配', matchType: 'none' };
+  return { items: [], names: [], status: '未匹配', matchType: 'none' };
 }
 
 // ---------- 单个 sheet 的匹配处理 ----------
@@ -444,17 +588,17 @@ function matchSingleSheet(ws, sheetName, index, options) {
       } else {
         nParsed++;
         const m = matchSpec(spec, index, { exactFirst, fuzzyTolerance });
-        res = { names: m.names, status: m.status, byLetter: new Map(), matchType: m.matchType };
+        res = { items: m.items || [], names: m.names, status: m.status, byLetter: new Map(), matchType: m.matchType };
 
         if (m.names.length > 0) {
           if (m.matchType === 'exact') nExact++;
           else if (m.matchType === 'ignore_dev') nIgnoreDev++;
           else if (m.matchType === 'fuzzy') nFuzzy++;
 
-          for (const nm of m.names) {
-            const L = (nm[0] || '?').toUpperCase();
+          for (const item of m.items) {
+            const L = (item.name[0] || '?').toUpperCase();
             if (!res.byLetter.has(L)) res.byLetter.set(L, []);
-            res.byLetter.get(L).push(nm);
+            res.byLetter.get(L).push(item);
             letterSet.add(L);
           }
         } else {
@@ -556,4 +700,4 @@ function runMatch(bomPath, products, options = {}) {
   };
 }
 
-module.exports = { runMatch, parseDesc, buildIndex, matchSpec, getSeries };
+module.exports = { runMatch, parseDesc, buildIndex, matchSpec, getSeries, parseProductName };

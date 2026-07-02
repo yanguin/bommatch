@@ -1,5 +1,5 @@
 // 渲染进程主逻辑
-const { ipcRenderer } = require('electron');
+const { ipcRenderer, shell } = require('electron');
 const matcherCore = require('./matcher-core.js');
 
 new Vue({
@@ -64,10 +64,14 @@ new Vue({
       // 当前品牌：weirong(微容) / qiangmao(强茂)
       currentBrand: 'weirong',
 
-      // 强茂型号筛选表单（仅产品型号）
-      qmFilterForm: {
-        productName: ''
-      },
+      // 强茂产品数据
+      qmProducts: null,
+
+      // 强茂多型号输入（多行文本）
+      qmInputText: '',
+
+      // 强茂解析出的型号列表（复选框）
+      qmParsedItems: [],
 
       // 强茂筛选结果
       qmFilterResult: null,
@@ -97,8 +101,8 @@ new Vue({
 
     // BOM匹配结果过滤（基于当前 sheet）
     filteredResults() {
-      if (!this.currentSheet) return [];
-      let results = this.currentSheet.tableData;
+      if (!this.currentSheet || !this.currentSheet.data) return [];
+      let results = this.currentSheet.data.tableData || [];
 
       if (this.filterStatus) {
         results = results.filter(row => row.status === this.filterStatus);
@@ -140,7 +144,7 @@ new Vue({
 
       const keyword = this.qmSearchText.toLowerCase();
       return this.qmFilterResult.filter(item =>
-        item.productName && item.productName.toLowerCase().includes(keyword)
+        (item.partNumber || '').toLowerCase().includes(keyword)
       );
     }
   },
@@ -247,14 +251,21 @@ new Vue({
     },
 
     // 处理匹配结果（多 sheet）
+    // 注意：原始大数据（rows/results/items）存到非响应式的 this.sheetsRawData，
+    //       matchData.sheets 里只存轻量 tableData，避免 Vue 深度响应式化导致卡死
     processMatchResult(result) {
       this.stats = result.stats;
       const allLetters = result.stats.letters || [];
 
-      // 为每个 sheet 构建 tableData
-      const sheets = result.sheets.map((sheetResult) => {
+      // 非响应式存储原始数据（用于导出 Excel）
+      this.sheetsRawData = [];
+
+      const sheets = result.sheets.map((sheetResult, sheetIdx) => {
         const { rows, headerIdx, descCol, results, origWidth, letters } = sheetResult.data;
         const sheetLetters = letters.length > 0 ? letters : allLetters;
+
+        // 原始数据存到非响应式变量
+        this.sheetsRawData[sheetIdx] = { rows, headerIdx, descCol, results, origWidth, letters: sheetLetters };
 
         const tableData = [];
         if (!sheetResult.skipped) {
@@ -263,27 +274,35 @@ new Vue({
             const row = rows[rowIndex] || [];
             const res = results[i];
 
+            const specsList = (res.items || []).flatMap((it) => it.specs || []);
+
             const item = {
               originalIndex: i + 1,
               index: i + 1,
               desc: row[descCol] || '',
               status: res.status,
               matchCount: res.names.length,
-              matchNames: res.names.join('\n')
+              matchNames: res.names.join('\n'),
+              // 冻结 specsList，Vue 2 会跳过对冻结对象的响应式转换
+              specsList: Object.freeze(specsList)
             };
 
             for (const letter of sheetLetters) {
               const arr = res.byLetter.get(letter);
-              item['letter_' + letter] = arr && arr.length > 0 ? arr.join('\n') : null;
+              item['letter_' + letter] = arr && arr.length > 0 ? arr.map((it) => it.name).join('\n') : null;
             }
 
             tableData.push(item);
           }
         }
 
+        // matchData.sheets 里只存轻量数据，不含 rows/results/items
         return {
-          ...sheetResult,
-          data: { ...sheetResult.data, tableData },
+          sheetName: sheetResult.sheetName,
+          skipped: sheetResult.skipped,
+          reason: sheetResult.reason,
+          stats: sheetResult.stats,
+          data: { tableData },
           displayLetters: sheetLetters
         };
       });
@@ -309,6 +328,17 @@ new Vue({
       });
     },
 
+    // 打开规格书链接
+    openSpecUrl(url) {
+      if (!url) {
+        this.$message.warning('该产品暂无规格书');
+        return;
+      }
+      // 补全域名（FileUrl 是相对路径）
+      const fullUrl = url.startsWith('http') ? url : 'https://www.viiyong.com' + url;
+      shell.openExternal(fullUrl);
+    },
+
     // 导出BOM匹配Excel（多 sheet）
     async exportExcel() {
       if (!this.matchData) {
@@ -327,9 +357,14 @@ new Vue({
       try {
         const sheetsPayload = [];
 
-        for (const sheetResult of this.matchData.sheets) {
+        for (let idx = 0; idx < this.matchData.sheets.length; idx++) {
+          const sheetResult = this.matchData.sheets[idx];
           if (sheetResult.skipped) continue;
-          const { rows, headerIdx, results, origWidth } = sheetResult.data;
+
+          // 原始数据从非响应式变量取
+          const raw = this.sheetsRawData[idx];
+          if (!raw) continue;
+          const { rows, headerIdx, results, origWidth } = raw;
           const letters = sheetResult.displayLetters || [];
           const extraHeaders = [...letters, '匹配数量', '匹配状态'];
           const aoa = [];
@@ -349,7 +384,7 @@ new Vue({
 
             for (const L of letters) {
               const arr = res.byLetter.get(L);
-              r.push(arr && arr.length > 0 ? arr.join('\n') : null);
+              r.push(arr && arr.length > 0 ? arr.map((it) => it.name).join('\n') : null);
             }
 
             r.push(res.names.length);
@@ -388,22 +423,43 @@ new Vue({
     parseAndFill() {
       const text = this.filterForm.productName;
       if (!text || text.trim() === '') {
-        this.$message.warning('请先输入规格描述');
+        this.$message.warning('请先输入规格描述或产品型号');
         return false;
       }
 
       try {
-        // 使用 matcher-core 的 parseDesc 函数解析
-        const spec = matcherCore.parseDesc(text);
+        // 判断输入是否为产品型号（以A/T/B/V开头，长度>=12）
+        const trimmedText = text.trim().toUpperCase();
+        const isProductName = /^[ATBV]\d{3}[A-Z]\d{4}/.test(trimmedText);
+
+        let spec = null;
+
+        if (isProductName) {
+          // 尝试使用 parseProductName 解析产品型号
+          spec = matcherCore.parseProductName(text);
+        }
+
+        // 如果产品型号解析失败，尝试使用 parseDesc 解析规格描述
+        if (!spec) {
+          spec = matcherCore.parseDesc(text);
+        }
 
         if (!spec) {
-          this.$message.warning('无法解析该规格描述，请检查格式是否正确');
+          this.$message.warning('无法解析该规格描述或产品型号，请检查格式是否正确');
           return false;
         }
 
         // 解析成功，自动填充各个筛选项
 
-        // 1. 尺寸代码映射
+        // 1. 系列选择（仅产品型号解析才有）
+        if (spec.series) {
+          const seriesLabel = spec.series;
+          if (!this.filterForm.series.includes(seriesLabel)) {
+            this.filterForm.series = [seriesLabel];
+          }
+        }
+
+        // 2. 尺寸代码映射
         const sizeMap = {
           '0201': '0201/0603M',
           '0402': '0402/1005M',
@@ -415,13 +471,20 @@ new Vue({
         };
 
         if (spec.size) {
-          const sizeLabel = sizeMap[spec.size] || null;
-          if (sizeLabel && !this.filterForm.sizes.includes(sizeLabel)) {
-            this.filterForm.sizes = [sizeLabel];
+          // 如果 size 已经是完整格式（如 "1210/3225M"），直接使用
+          if (spec.size.includes('/')) {
+            if (!this.filterForm.sizes.includes(spec.size)) {
+              this.filterForm.sizes = [spec.size];
+            }
+          } else {
+            const sizeLabel = sizeMap[spec.size] || null;
+            if (sizeLabel && !this.filterForm.sizes.includes(sizeLabel)) {
+              this.filterForm.sizes = [sizeLabel];
+            }
           }
         }
 
-        // 2. 温度特性映射
+        // 3. 温度特性映射
         const tempMap = {
           'C0G': 'C0G',
           'X5R': 'X5R',
@@ -442,7 +505,7 @@ new Vue({
           }
         }
 
-        // 3. 容量值和单位转换
+        // 4. 容量值和单位转换
         if (spec.cap !== null) {
           const capPf = spec.cap;
           // 根据大小选择合适的单位显示
@@ -461,7 +524,7 @@ new Vue({
           }
         }
 
-        // 4. 偏差映射
+        // 5. 偏差映射
         const devMap = {
           '±0.05pF': '±0.05pF',
           '±0.1pF': '±0.1pF',
@@ -481,7 +544,7 @@ new Vue({
           }
         }
 
-        // 5. 电压值
+        // 6. 电压值
         if (spec.volt !== null) {
           this.filterForm.voltageValue = spec.volt.toString();
         }
@@ -531,7 +594,11 @@ new Vue({
           return;
         }
 
-        this.filterResult = result.data;
+        // 冻结每条结果的 specs，避免 Vue 深度响应式化
+        this.filterResult = result.data.map(item => ({
+          ...item,
+          specs: Object.freeze(item.specs || [])
+        }));
 
         // 显示筛选结果
         if (result.maxReached) {
@@ -631,10 +698,105 @@ new Vue({
     },
 
     // ============ 强茂型号筛选 ============
-    // 强茂查询（暂未接入产品数据）
-    async runQmFilter() {
-      if (!this.qmFilterForm.productName || !this.qmFilterForm.productName.trim()) {
+    // 加载强茂产品数据
+    async loadQmProducts() {
+      if (this.qmProducts) return this.qmProducts;
+      try {
+        const data = await ipcRenderer.invoke('load-qm-products');
+        if (data.error) {
+          this.$message.error(data.error);
+          return null;
+        }
+        this.qmProducts = data;
+        return data;
+      } catch (err) {
+        this.$message.error('加载强茂产品数据失败: ' + err.message);
+        return null;
+      }
+    },
+
+    // 解析多行输入为复选框列表
+    async parseQmInput() {
+      const text = (this.qmInputText || '').trim();
+      if (!text) {
         this.$message.warning('请输入产品型号');
+        return;
+      }
+
+      // 加载产品数据
+      const products = await this.loadQmProducts();
+      if (!products || !products.list) return;
+
+      // 按换行分割，提取型号
+      const lines = text.split(/[\n\r]+/).map(l => l.trim()).filter(l => l);
+      if (lines.length === 0) {
+        this.$message.warning('未识别到产品型号');
+        return;
+      }
+
+      // 构建型号索引（去空格，大写比较）
+      const productMap = new Map();
+      for (const item of products.list) {
+        const pn = (item.partNumber || '').trim().toUpperCase();
+        if (pn) productMap.set(pn, item);
+      }
+
+      let found = 0;
+      let notFound = 0;
+      for (const line of lines) {
+        const pnKey = line.toUpperCase();
+        // 精确匹配
+        if (productMap.has(pnKey)) {
+          // 避免重复添加
+          if (!this.qmParsedItems.some(it => it.partNumber.toUpperCase() === pnKey)) {
+            this.qmParsedItems.push({
+              partNumber: productMap.get(pnKey).partNumber,
+              checked: true
+            });
+            found++;
+          }
+        } else {
+          // 模糊匹配（包含关系）
+          let matched = false;
+          for (const [key, item] of productMap) {
+            if (key.includes(pnKey) || pnKey.includes(key)) {
+              if (!this.qmParsedItems.some(it => it.partNumber.toUpperCase() === key)) {
+                this.qmParsedItems.push({
+                  partNumber: item.partNumber,
+                  checked: true
+                });
+                found++;
+                matched = true;
+              }
+            }
+          }
+          if (!matched) {
+            this.qmParsedItems.push({
+              partNumber: line,
+              checked: false
+            });
+            notFound++;
+          }
+        }
+      }
+
+      // 清空文本框
+      this.qmInputText = '';
+
+      if (found > 0 && notFound > 0) {
+        this.$message.success(`解析完成：找到 ${found} 个，未找到 ${notFound} 个`);
+      } else if (found > 0) {
+        this.$message.success(`解析完成：找到 ${found} 个产品`);
+      } else {
+        this.$message.warning(`解析完成：${notFound} 个型号未在产品库中找到`);
+      }
+    },
+
+    // 强茂查询（基于复选框勾选的型号）
+    async runQmFilter() {
+      const checkedItems = this.qmParsedItems.filter(it => it.checked);
+      if (checkedItems.length === 0) {
+        this.$message.warning('请选择产品型号');
         return;
       }
 
@@ -643,9 +805,41 @@ new Vue({
       this.loadingText = '正在查询强茂产品...';
 
       try {
-        // 强茂产品数据暂未爬取，暂不接入实际查询
-        this.$message.info('强茂产品数据暂未上线，敬请期待');
-        this.qmFilterResult = [];
+        const products = await this.loadQmProducts();
+        if (!products || !products.list) {
+          this.qmFilterResult = [];
+          return;
+        }
+
+        // 构建型号索引
+        const productMap = new Map();
+        for (const item of products.list) {
+          const pn = (item.partNumber || '').trim().toUpperCase();
+          if (pn) productMap.set(pn, item);
+        }
+
+        // 根据勾选的型号查询
+        const results = [];
+        for (const checked of checkedItems) {
+          const pnKey = checked.partNumber.toUpperCase();
+          if (productMap.has(pnKey)) {
+            results.push(productMap.get(pnKey));
+          } else {
+            // 模糊匹配
+            for (const [key, item] of productMap) {
+              if (key.includes(pnKey) || pnKey.includes(key)) {
+                results.push(item);
+              }
+            }
+          }
+        }
+
+        this.qmFilterResult = results;
+        if (results.length > 0) {
+          this.$message.success(`查询完成，共 ${results.length} 条结果`);
+        } else {
+          this.$message.warning('未找到匹配的产品');
+        }
       } catch (err) {
         this.$message.error('查询失败: ' + err.message);
       } finally {
@@ -654,11 +848,14 @@ new Vue({
       }
     },
 
-    // 强茂清空
-    resetQmFilter() {
-      this.qmFilterForm.productName = '';
-      this.qmFilterResult = null;
-      this.qmSearchText = '';
+    // 强茂清空解析列表
+    clearQmParsed() {
+      this.qmParsedItems = [];
+    },
+
+    // 强茂全选/全不选
+    toggleQmAll(val) {
+      this.qmParsedItems.forEach(it => { it.checked = val; });
     },
 
     // 强茂导出
@@ -675,9 +872,33 @@ new Vue({
       this.loadingText = '正在导出Excel...';
 
       try {
+        // 构建导出数据和表头（不含规格书列）
+        const exportHeaders = [
+          '产品型号', '封装', '产品状态', '极性', '配置',
+          'VDS(V)', 'VGS(±V)', 'ID(A)',
+          'RDS(on)@10V(mΩ)', 'RDS(on)@4.5V(mΩ)',
+          'Ciss(pF)', 'VGS(th)(V)', 'Qg@10V(nC)'
+        ];
+        const exportData = this.qmFilterResult.map(item => ({
+          '产品型号': item.partNumber || '',
+          '封装': item.package || '',
+          '产品状态': item.productStatus || '',
+          '极性': item.polarity || '',
+          '配置': item.config || '',
+          'VDS(V)': item.vds || '',
+          'VGS(±V)': item.vgs || '',
+          'ID(A)': item.id || '',
+          'RDS(on)@10V(mΩ)': item.rdsOn_10V || '',
+          'RDS(on)@4.5V(mΩ)': item.rdsOn_4_5V || '',
+          'Ciss(pF)': item.ciss || '',
+          'VGS(th)(V)': item.vgsTh || '',
+          'Qg@10V(nC)': item.qg_10V || ''
+        }));
+
         const exportResult = await ipcRenderer.invoke('export-filter-excel', {
           outputPath: savePath,
-          data: this.qmFilterResult
+          data: exportData,
+          customHeaders: exportHeaders
         });
 
         if (exportResult.success) {
