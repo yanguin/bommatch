@@ -50,19 +50,19 @@
     }
 
     .left-panel {
-      width: 360px;
-      min-width: 360px;
-      max-width: 360px;
+      width: 320px;
+      min-width: 320px;
+      max-width: 320px;
       background: white;
       border-right: 1px solid #e4e7ed;
-      padding: 20px;
+      padding: 15px;
       overflow-y: auto;
       flex-shrink: 0;
     }
 
     .right-panel {
       flex: 1;
-      min-width: 400px;
+      min-width: 200px;
       display: flex;
       flex-direction: column;
       background: #f5f7fa;
@@ -604,10 +604,10 @@
         <div v-show="activeMode === 'filter'">
           <!-- 产品型号 -->
           <div class="filter-section">
-            <div class="filter-section-title">产品型号（支持输入完整规格自动解析）</div>
+            <div class="filter-section-title">产品型号（支持微容/国巨/风华/火炬/村田型号自动解析）</div>
             <el-input
               v-model="filterForm.productName"
-              placeholder="如: 0402,100nF,±10%,50V,X7R 或 贴片电容,10uF(106)/10V,±10%,X5R,0603"
+              placeholder="如: T106K1206X7T100N2P / CC0402KRX7R0BB103 / GRM32EC72A106KE05L / 0603B101K500NT"
               size="small"
               clearable
               @keyup.enter.native="parseAndFill">
@@ -621,13 +621,14 @@
               </el-button>
             </div>
             <div style="margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.6;">
-              <!-- 支持多种格式：<br>
-              • 逗号带单位：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code><br>
-              • 斜杠EIA码：<code style="color:#e96900;">C/222/K/50/X5R/0402</code><br>
-              • 贴片电容：<code style="color:#e96900;">贴片电容,10uF(106)/10V,±10%,X5R,0603</code><br>
-              • 中文封装：<code style="color:#e96900;">0402封装..._100nF/±10%/50V/X7R</code><br>
-              • MLCC型号：<code style="color:#e96900;">MLCC,106,K,6.3V,X5R,0603</code><br> -->
-              输入后点"解析"自动填充各筛选项
+              支持品牌型号自动解析：<br>
+              • 微容：<code style="color:#e96900;">T106K1206X7T100N2P</code>（A/T/B/V 开头）<br>
+              • 国巨：<code style="color:#e96900;">CC0402KRX7R0BB103</code>（CC 开头）<br>
+              • 风华：<code style="color:#e96900;">0603B101K500NT</code>（4位数字+B/CG/X）<br>
+              • 火炬：<code style="color:#e96900;">FCC1206X226K250HT</code> / <code style="color:#e96900;">HGC0805R5476M100NSLJ</code><br>
+              • 村田：<code style="color:#e96900;">GRM32EC72A106KE05L</code>（GRM 开头）<br>
+              • 规格描述：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code>
+              <div style="margin-top: 4px;">输入后点"解析"自动填充各筛选项</div>
             </div>
           </div>
 

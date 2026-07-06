@@ -13,7 +13,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 650,
-    minWidth: 900,
+    minWidth: 550,
     minHeight: 500,
     webPreferences: {
       nodeIntegration: true,
@@ -297,10 +297,11 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
       // 尺寸过滤
       if (selectedSizes.length > 0) {
         const itemSize = item.size || '';
+        const itemInchCode = itemSize.split('/')[0].trim();  // 取产品的 inch 码（如 0603/1608M → 0603）
         let matched = false;
         for (const selSize of selectedSizes) {
-          const inchCode = selSize.split('/')[0].trim();
-          if (itemSize.includes(inchCode)) {
+          const inchCode = selSize.split('/')[0].trim();  // 取筛选条件的 inch 码
+          if (itemInchCode === inchCode) {  // 精确匹配
             matched = true;
             break;
           }

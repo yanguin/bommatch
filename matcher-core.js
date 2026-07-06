@@ -85,6 +85,29 @@ function eiaCodeToPf(code) {
   return null;
 }
 
+// EIA 三位码转电压（V）
+// 规则与 eiaCodeToPf 一致：前两位为有效数字，第三位为乘数（10 的幂）
+// 用于风华/火炬等品牌的电压码解析
+// 例如：500=50V, 160=16V, 101=100V, 202=2000V；带 R 表示小数点：6R3=6.3V, 2R5=2.5V
+function eiaCodeToVolt(code) {
+  if (!code) return null;
+  const s = String(code).trim().toUpperCase();
+  // 标准 EIA 三位码
+  const m = s.match(/^(\d{1,2})(\d)$/);
+  if (m) {
+    const sig = parseInt(m[1], 10);
+    const mult = parseInt(m[2], 10);
+    if (isNaN(sig) || isNaN(mult)) return null;
+    return sig * Math.pow(10, mult);
+  }
+  // 带 R 的小数表示
+  if (/^\d*R\d*$/.test(s)) {
+    const val = parseFloat(s.replace(/R/i, '.'));
+    if (!isNaN(val)) return val;
+  }
+  return null;
+}
+
 // 公差字母码转标准偏差格式
 // J=±5%, K=±10%, M=±20% 等
 function devLetterToNorm(letter) {
@@ -250,6 +273,190 @@ function parseProductName(name) {
   } catch (err) {
     return null;
   }
+}
+
+// ---------- 解析其他品牌 MLCC 贴片电容型号 ----------
+// 支持：国巨 YAGEO(CC)、风华 FH(4位数字开头)、火炬 Torch(FCC/HGC)、村田 Murata(GRM)
+// 返回格式与 parseProductName 对齐：{ series, cap, dev, size, temp, volt, raw }
+// series 始终为 null（其他品牌无微容 A/T/B/V 系列）
+function parseOtherBrandMlcc(name) {
+  if (!name) return null;
+  const s = String(name).trim().toUpperCase();
+
+  // 国巨 YAGEO：CC 开头
+  if (s.startsWith('CC')) return parseYageo(s);
+
+  // 火炬 Torch：FCC 或 HGC 开头
+  if (s.startsWith('FCC') || s.startsWith('HGC')) return parseTorch(s);
+
+  // 村田 Murata：GRM 开头
+  if (s.startsWith('GRM')) return parseMurata(s);
+
+  // 风华 FH：4位数字开头 + 介质字母(B/CG/X)
+  // 需在村田/国巨/火炬之后判断，避免误匹配
+  if (/^\d{4}(B|CG|X)[\dR]{3}/.test(s)) return parseFenghua(s);
+
+  return null;
+}
+
+// 国巨 YAGEO 解析
+// 格式：CC + 尺寸(4) + 偏差(1字母) + 内部码(1字母,通常R,部分为K) + 温度特性(3)+内部电压编码(1) + 版本(2字母) + 容量码(3)
+// 示例：CC0402KRX7R0BB103 → 尺寸0402, 偏差K(±10%), 介质X7R, 容量103(=10nF)
+// 注意1：偏差后的内部码字符不固定（R/K等），仅作占位不参与解析
+// 注意2：温度相关段为4位整体（如X7R0），介质取前3位；型号不含标准电压信息，volt 始终为 null
+function parseYageo(s) {
+  const m = s.match(/^CC(\d{4})([A-Z])(?:[A-Z])([A-Z0-9]{4})([A-Z]{2})([\dR]{3})[A-Z]*$/);
+  if (!m) return null;
+
+  const sizeCode = m[1];
+  const devLetter = m[2];
+  const tempSeg = m[3];        // 4位温度+电压编码段（如 X7R0）
+  const capCode = m[5];
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  // 介质取温度段前3位（X7R0 → X7R）
+  let temp = tempCode(tempSeg.substring(0, 3));
+  // 微容筛选项中无 Y5V，设为空
+  if (temp === 'Y5V') temp = '';
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size: sizeCode,
+    temp: temp || '',
+    volt: null,  // 国巨型号内部电压编码不对应标准电压值，不解析
+    raw: s
+  };
+}
+
+// 风华 FH 解析
+// 格式：尺寸(4) + 介质(B/CG/X) + 容量码(3) + 偏差(1字母) + 电压码(3,可含R) + 包装(字母)
+// 示例：0603B101K500NT → 尺寸0603, 介质B(X7R), 容量101(=100pF), 偏差K(±10%), 电压500(=50V)
+//       0402B104K6R3NT → 电压6R3(=6.3V)
+function parseFenghua(s) {
+  const m = s.match(/^(\d{4})(B|CG|X)([\dR]{3})([A-Z])([\dR]{3})[A-Z]*$/);
+  if (!m) return null;
+
+  const sizeCode = m[1];
+  const mediumCode = m[2];     // B/CG/X
+  const capCode = m[3];
+  const devLetter = m[4];
+  const voltCode = m[5];
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  const mediumMap = { B: 'X7R', CG: 'C0G', X: 'X5R' };
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size: sizeCode,
+    temp: mediumMap[mediumCode] || '',
+    volt: eiaCodeToVolt(voltCode),
+    raw: s
+  };
+}
+
+// 火炬 Torch 解析
+// FCC 格式：FCC + 尺寸(4) + 介质(1字母) + 容量码(3) + 偏差(1字母) + 电压码(3) + 包装
+//   示例：FCC1206X226K250HT → 尺寸1206, 介质X(X5R), 容量226(=22µF), 偏差K(±10%), 电压250(=25V)
+// HGC 格式：HGC + 尺寸(4) + 介质码(2) + 容量码(3) + 偏差(1字母) + 电压码(3) + 包装
+//   示例：HGC0805R5476M100NSLJ → 尺寸0805, 介质R5(X5R), 容量476(=47µF), 偏差M(±20%), 电压100(=10V)
+function parseTorch(s) {
+  // FCC 格式：介质为单字母
+  if (s.startsWith('FCC')) {
+    const m = s.match(/^FCC(\d{4})([A-Z])([\dR]{3})([A-Z])([\dR]{3})[A-Z]*$/);
+    if (!m) return null;
+
+    const cap = eiaCodeToPf(m[3]);
+    if (cap === null) return null;
+
+    const fccMediumMap = { X: 'X5R', B: 'X7R', C: 'C0G' };
+
+    return {
+      series: null,
+      cap,
+      dev: devLetterToNorm(m[4]),
+      size: m[1],
+      temp: fccMediumMap[m[2]] || '',
+      volt: eiaCodeToVolt(m[5]),
+      raw: s
+    };
+  }
+
+  // HGC 格式：介质为2位码（R5/R7/N4 等）
+  if (s.startsWith('HGC')) {
+    const m = s.match(/^HGC(\d{4})([A-Z0-9]{2})([\dR]{3})([A-Z])([\dR]{3})[A-Z]*$/);
+    if (!m) return null;
+
+    const cap = eiaCodeToPf(m[3]);
+    if (cap === null) return null;
+
+    const hgcMediumMap = { R5: 'X5R', R7: 'X7R', N4: 'C0G' };
+
+    return {
+      series: null,
+      cap,
+      dev: devLetterToNorm(m[4]),
+      size: m[1],
+      temp: hgcMediumMap[m[2]] || '',
+      volt: eiaCodeToVolt(m[5]),
+      raw: s
+    };
+  }
+
+  return null;
+}
+
+// 村田 Murata 解析
+// 格式：GRM(3) + 尺寸(2) + 厚度(1) + 介质(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1) = 18位
+// 示例：GRM32EC72A106KE05L → 尺寸32(=1210), 介质C7(=X7S), 电压2A(=100V), 容量106(=10µF), 偏差K(±10%)
+function parseMurata(s) {
+  const m = s.match(/^GRM(\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$/);
+  if (!m) return null;
+
+  const sizeCode2 = m[1];    // 2位尺寸码
+  const mediumCode = m[3];   // 2位介质码
+  const voltCode = m[4];     // 2位电压码
+  const capCode = m[5];      // 容量EIA码
+  const devLetter = m[6];    // 偏差字母
+
+  // 尺寸码映射（2位 → 4位 inch 码）
+  const sizeMap = {
+    '02': '0402', '03': '0603', '05': '0805', '06': '1206', '08': '1210',
+    '15': '0201', '18': '0603', '21': '0805', '31': '1206', '32': '1210',
+    '55': '1812'
+  };
+  const size = sizeMap[sizeCode2];
+  if (!size) return null;
+
+  // 介质码映射
+  const mediumMap = { '5C': 'C0G', 'R6': 'X5R', 'R7': 'X7R', 'C7': 'X7S' };
+
+  // 电压码映射
+  const voltMap = {
+    '0G': 4, '0J': 6.3, '0L': 2.5, '1A': 10, '1C': 16, '1E': 25, '1H': 50,
+    '1V': 35, '1K': 80, '2A': 100, '2D': 200, '2E': 250, '2W': 450,
+    '2H': 500, '2K': 600, '3A': 1000
+  };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp: mediumMap[mediumCode] || '',
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    raw: s
+  };
 }
 
 // ---------- 解析 BOM 物料描述 ----------
@@ -910,4 +1117,4 @@ function runMatch(bomPath, products, options = {}) {
   };
 }
 
-module.exports = { runMatch, parseDesc, parseDescLoose, buildIndex, matchSpec, getSeries, parseProductName };
+module.exports = { runMatch, parseDesc, parseDescLoose, buildIndex, matchSpec, getSeries, parseProductName, parseOtherBrandMlcc };

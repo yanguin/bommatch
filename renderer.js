@@ -428,15 +428,20 @@ new Vue({
       }
 
       try {
-        // 判断输入是否为产品型号（以A/T/B/V开头，长度>=12）
+        // 判断输入是否为产品型号（以A/T/B/V开头，容量码可含R表示小数点，如5R6=5.6pF）
         const trimmedText = text.trim().toUpperCase();
-        const isProductName = /^[ATBV]\d{3}[A-Z]\d{4}/.test(trimmedText);
+        const isProductName = /^[ATBV][\dR]{3}[A-Z]\d{4}/.test(trimmedText);
 
         let spec = null;
 
         if (isProductName) {
           // 尝试使用 parseProductName 解析产品型号
           spec = matcherCore.parseProductName(text);
+        }
+
+        // 如果微容型号解析失败，尝试其他品牌MLCC型号解析（国巨/风华/火炬/村田）
+        if (!spec) {
+          spec = matcherCore.parseOtherBrandMlcc(text);
         }
 
         // 如果产品型号解析失败，尝试使用宽松解析提取规格字段
