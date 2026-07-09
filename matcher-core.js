@@ -276,7 +276,7 @@ function parseProductName(name) {
 }
 
 // ---------- 解析其他品牌 MLCC 贴片电容型号 ----------
-// 支持：国巨 YAGEO(CC)、风华 FH(4位数字开头)、火炬 Torch(FCC/HGC)、村田 Murata(GRM)
+// 支持：国巨 YAGEO(CC)、风华 FH(4位数字开头)、火炬 Torch(FCC/HGC)、村田 Murata(GRM)、TDK(CGA)
 // 返回格式与 parseProductName 对齐：{ series, cap, dev, size, temp, volt, raw }
 // series 始终为 null（其他品牌无微容 A/T/B/V 系列）
 function parseOtherBrandMlcc(name) {
@@ -292,8 +292,11 @@ function parseOtherBrandMlcc(name) {
   // 村田 Murata：GRM 开头
   if (s.startsWith('GRM')) return parseMurata(s);
 
+  // TDK 东电化：CGA 开头（车规级）
+  if (s.startsWith('CGA')) return parseTdk(s);
+
   // 风华 FH：4位数字开头 + 介质字母(B/CG/X)
-  // 需在村田/国巨/火炬之后判断，避免误匹配
+  // 需在村田/国巨/火炬/TDK 之后判断，避免误匹配
   if (/^\d{4}(B|CG|X)[\dR]{3}/.test(s)) return parseFenghua(s);
 
   return null;
@@ -454,6 +457,55 @@ function parseMurata(s) {
     dev: devLetterToNorm(devLetter),
     size,
     temp: mediumMap[mediumCode] || '',
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    raw: s
+  };
+}
+
+// TDK 东电化 CGA 系列车规级 MLCC 解析
+// 格式：CGA + 尺寸(1位) + 厚度(1字母) + 寿命试压(1数字) + 温度特性(3位) + 电压(2位) + 容量(3位) + 偏差(1字母) + 厚度/包装/特殊码(剩余)
+// 示例：CGA3E3X7R1H474KT000N → 尺寸0603, X7R, 1H(50V), 474(470nF), K(±10%)
+//       CGA6P1C0G3B103G250AC  → 尺寸1210, C0G, 3B(1250V), 103(10nF), G(±2%)
+//       CGA3E2NP02A3R3C080AA  → 尺寸0603, NP0(=C0G), 2A(100V), 3R3(3.3pF), C(±0.25pF)
+function parseTdk(s) {
+  const m = s.match(/^CGA([1-9D])([A-Z])([123])(C0G|NP0|X5R|X6S|X7R|X7S|X7T|X8R|X8L)([0-9][A-Z])([\dR]{3})([CDFGJKM])([A-Z0-9]*)$/);
+  if (!m) return null;
+
+  const sizeCode = m[1];        // 1位尺寸码
+  const tempCode = m[4];        // 温度特性（C0G/NP0/X5R/X7R等）
+  const voltCode = m[5];        // 2位电压码
+  const capCode = m[6];         // 3位容量 EIA 码
+  const devLetter = m[7];       // 偏差字母
+
+  // 尺寸码映射（TDK CGA 系列 → inch 码）
+  const sizeMap = {
+    '1': '0201', '2': '0402', '3': '0603', '4': '0805', '5': '1206',
+    '6': '1210', '7': '1808', '8': '1812', '9': '2220', 'D': '3025'
+  };
+  const size = sizeMap[sizeCode];
+  if (!size) return null;
+
+  // 温度特性归一化：NP0 与 C0G 同义
+  let temp = tempCode;
+  if (temp === 'NP0') temp = 'C0G';
+
+  // 电压码映射（TDK 标准）
+  const voltMap = {
+    '0G': 4, '0L': 2.5, '0J': 6.3,
+    '1A': 10, '1C': 16, '1E': 25, '1V': 35, '1H': 50, '1K': 80,
+    '2A': 100, '2D': 200, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
+    '3A': 1000, '3B': 1250, '3D': 2000, '3F': 3000
+  };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp,
     volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
     raw: s
   };
