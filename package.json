@@ -1,6 +1,6 @@
 {
   "name": "viiyong-bom-matcher",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "BOM表匹配工具 - 自动匹配viiyong型号",
   "main": "main.js",
