@@ -289,8 +289,11 @@ function parseOtherBrandMlcc(name) {
   // 火炬 Torch：FCC 或 HGC 开头
   if (s.startsWith('FCC') || s.startsWith('HGC')) return parseTorch(s);
 
-  // 村田 Murata：GRM 开头
+  // 村田 Murata：GRM 开头（通用型）
   if (s.startsWith('GRM')) return parseMurata(s);
+
+  // 村田 Murata：GCM 开头（车规级）
+  if (s.startsWith('GCM')) return parseMurataGcm(s);
 
   // TDK 东电化：CGA 开头（车规级）
   if (s.startsWith('CGA')) return parseTdk(s);
@@ -511,6 +514,59 @@ function parseTdk(s) {
   };
 }
 
+// 村田 Murata GCM 系列车规级 MLCC 解析
+// 格式：GCM + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
+// 示例：GCM155C1H221JA16D  → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
+//       GCM155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
+function parseMurataGcm(s) {
+  const m = s.match(/^GCM(\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$/);
+  if (!m) return null;
+
+  const sizeCode2 = m[1];    // 2位尺寸码
+  const mediumCode = m[3];   // 2位温度特性码
+  const voltCode = m[4];     // 2位电压码
+  const capCode = m[5];      // 容量 EIA 码
+  const devLetter = m[6];    // 偏差字母
+
+  // 尺寸码映射（村田 GCM 系列与 GRM 系列尺寸码相同）
+  const sizeMap = {
+    '03': '0201', '15': '0402', '18': '0603', '21': '0805', '31': '1206', '32': '1210',
+    '35': '1812', '43': '2220'
+  };
+  const size = sizeMap[sizeCode2];
+  if (!size) return null;
+
+  // 温度特性码映射（村田 GCM 系列车规级）
+  // 注意：C2, 7U, 9E 等特殊介质微容筛选项中无对应选项，会置空
+  const mediumMap = {
+    '5C': 'C0G', '5G': 'X8G',
+    'R6': 'X5R', 'R7': 'X7R', 'R9': 'X8R',
+    'C7': 'X7S', 'D7': 'X7T',
+    'L8': 'X8L', 'M8': 'X8M', 'N8': 'X8N'
+  };
+
+  // 电压码映射（村田 GCM 系列与 GRM 系列电压码基本相同）
+  const voltMap = {
+    '0G': 4, '0L': 2.5, '0J': 6.3,
+    '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1K': 80,
+    '2A': 100, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
+    '3A': 1000, '3D': 2000
+  };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp: mediumMap[mediumCode] || '',
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    raw: s
+  };
+}
+
 // ---------- 解析 BOM 物料描述 ----------
 function parseDesc(desc) {
   if (!desc) return null;
@@ -712,6 +768,32 @@ function parseDesc(desc) {
             return { cap, dev: dev || '', volt, temp, size, raw: desc };
           }
         }
+      }
+    }
+  }
+
+  // ===== SMD 斜杠分隔描述格式 =====
+  // 格式：SMD/[容量]/[偏差]/[电压或尺寸]/[尺寸或电压]/[介质]/[原厂型号[:：]型号]
+  // 电压和尺寸的顺序可能互换；"原厂型号"前可能缺失斜杠
+  // 例如：SMD/1pF/±0.25pF/50V/0402/NPO/原厂型号：CC0402CRNPO9BN1R0
+  //       SMD/0.3pF/±0.1pF/0402/50V/COG/原厂型号：0402CG0R3B500NT
+  //       SMD/1nF/±5%/50V/0402/NPO原厂型号:CC0402JRNPO9BN102
+  if (/^SMD[\/\s]/i.test(text)) {
+    // 在"原厂型号"前统一补充斜杠，便于后续分割（已有斜杠时产生空段会被过滤）
+    const normalized = text.replace(/(原厂型号)/i, '/$1');
+    const sp = normalized.split('/').map((p) => p.trim()).filter((p) => p.length);
+    // sp[0]=SMD, sp[1]=容量, sp[2]=偏差, sp[3]/sp[4]=电压|尺寸(顺序不定), sp[5]=介质
+    if (sp.length >= 6 && /^SMD$/i.test(sp[0])) {
+      const cap = capToPf(sp[1]);
+      const dev = normDev(sp[2]);
+      let volt = null, size = null, temp = '';
+      for (let i = 3; i <= 4 && i < sp.length; i++) {
+        if (volt === null && RE_VOLT.test(sp[i])) { volt = voltToNum(sp[i]); continue; }
+        if (size === null && RE_SIZE.test(sp[i])) { size = sizeInch(sp[i]); continue; }
+      }
+      if (sp[5] && RE_TEMP.test(sp[5])) { temp = tempCode(sp[5]); }
+      if (cap !== null && volt !== null && size && temp) {
+        return { cap, dev: dev || '', volt, temp, size, raw: desc };
       }
     }
   }
