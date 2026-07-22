@@ -2,7 +2,9 @@
   "name": "viiyong-bom-matcher",
   "version": "1.1.2",
   "private": true,
-  "description": "BOM表匹配工具 - 自动匹配viiyong型号",
+  "description": "一只鹅的神奇工具",
+  "author": "鹅",
+  "copyright": "Copyright © walnm",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -52,7 +54,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "language": "2052",
+      "installerLanguages": ["zh_CN"]
     }
   }
 }
