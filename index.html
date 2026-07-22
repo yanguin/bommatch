@@ -604,7 +604,7 @@
         <div v-show="activeMode === 'filter'">
           <!-- 产品型号 -->
           <div class="filter-section">
-            <div class="filter-section-title">产品型号（支持微容/国巨/风华/火炬/村田/TDK型号自动解析）</div>
+            <div class="filter-section-title">产品型号（支持微容/国巨/风华/火炬/村田/TDK/太阳诱电型号自动解析）</div>
             <el-input
               v-model="filterForm.productName"
               placeholder="如: T106K1206X7T100N2P"
@@ -622,13 +622,19 @@
             </div>
             <div style="margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.6;">
               支持品牌型号自动解析：<br>
-              • 微容：<code style="color:#e96900;">T106K1206X7T100N2P</code>（A/T/B/V 开头）<br>
-              • 国巨：<code style="color:#e96900;">CC0402KRX7R0BB103</code>（CC 开头）<br>
+              微容、国巨、三星、信昌、禾伸堂、京瓷、风华、火炬、村田、TDK、太阳诱电...
+              <!-- • 微容：<code style="color:#e96900;">T106K1206X7T100N2P</code>（A/T/B/V 开头）<br>
+              • 国巨：<code style="color:#e96900;">CC0402KRX7R0BB103</code>（CC 开头）/ <code style="color:#e96900;">AC0603KRX7R9BB104</code>（AC 汽车级）<br>
+              • 三星：<code style="color:#e96900;">CL31B106KAHVPNE</code>（CL 开头）<br>
+              • 信昌：<code style="color:#e96900;">FM21X102K251PXG</code>（FK/FM 等）/ <code style="color:#e96900;">MA0402CG-820F-100G</code>（MA 系列）<br>
+              • 禾伸堂：<code style="color:#e96900;">C1206X102K202TX</code>（C+数字开头）<br>
+              • 京瓷：<code style="color:#e96900;">CM03X5R225M06AT</code>（CM/CT/CU/AR 开头）<br>
               • 风华：<code style="color:#e96900;">0603B101K500NT</code>（4位数字+B/CG/X）<br>
               • 火炬：<code style="color:#e96900;">FCC1206X226K250HT</code> / <code style="color:#e96900;">HGC0805R5476M100NSLJ</code><br>
               • 村田：<code style="color:#e96900;">GRM32EC72A106KE05L</code>（GRM 通用型）/ <code style="color:#e96900;">GCM155R71H104KE02D</code>（GCM 车规级）<br>
-              • TDK：<code style="color:#e96900;">CGA3E3X7R1H474KT000N</code>（CGA 开头，车规级）<br>
-              • 规格描述：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code>
+              • TDK：<code style="color:#e96900;">CGA3E3X7R1H474KT000N</code>（CGA 车规级）/ <code style="color:#e96900;">CNA6P1X7R1H106KT000A</code>（CNA 软端子车规级）<br>
+              • 太阳诱电：<code style="color:#e96900;">MCJCH32MLC7475KPDDT1</code>（M+分类+类型开头）<br>
+              • 规格描述：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code> -->
               <div style="margin-top: 4px;">输入后点"解析"自动填充各筛选项</div>
             </div>
           </div>
