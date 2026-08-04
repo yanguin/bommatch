@@ -1445,13 +1445,17 @@ function matchSpec(spec, index, options = {}) {
         matchType: 'exact'
       };
     }
-    // 忽略偏差匹配
-    return {
-      items: cands.map((c) => ({ name: c.name, specs: c.specs })),
-      names: cands.map((c) => c.name),
-      status: '忽略偏差',
-      matchType: 'ignore_dev'
-    };
+    // 忽略偏差匹配（容差为0时要求偏差精确匹配，不忽略偏差）
+    if (fuzzyTolerance > 0) {
+      return {
+        items: cands.map((c) => ({ name: c.name, specs: c.specs })),
+        names: cands.map((c) => c.name),
+        status: '忽略偏差',
+        matchType: 'ignore_dev'
+      };
+    }
+    // 容差为0且偏差不一致，视为未匹配
+    return { items: [], names: [], status: '未匹配', matchType: 'none' };
   }
 
   // 容差匹配（容量在一定误差范围内）
