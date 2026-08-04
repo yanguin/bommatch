@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.viiyong.bom-matcher",
-    "productName": "一只鹅的神奇工具",
+    "productName": "BOM型号匹配工具",
     "directories": {
       "output": "dist"
     },
