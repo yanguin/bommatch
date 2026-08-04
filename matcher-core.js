@@ -315,6 +315,9 @@ function parseOtherBrandMlcc(name) {
   // 村田 Murata：GCM 开头（车规级）
   if (s.startsWith('GCM')) return parseMurataGcm(s);
 
+  // 村田 Murata：GCJ 开头（高频低阻抗型）
+  if (s.startsWith('GCJ')) return parseMurataGcj(s);
+
   // 风华 FH：4位数字开头 + 介质字母(B/CG/X)
   // 需在村田/国巨/火炬/TDK 之后判断，避免误匹配
   if (/^\d{4}(B|CG|X)[\dR]{3}/.test(s)) return parseFenghua(s);
@@ -629,6 +632,54 @@ function parseMurataGcm(s) {
     '0G': 4, '0L': 2.5, '0J': 6.3,
     '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1K': 80,
     '2A': 100, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
+    '3A': 1000, '3D': 2000
+  };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp: mediumMap[mediumCode] || '',
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    raw: s
+  };
+}
+
+// 村田 Murata GCJ 系列高频低阻抗 MLCC 解析
+// 格式：GCJ + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
+// 示例：GCJ188C70J475KE02D → 尺寸0603(18), X7S(C7), 6.3V(0J), 4.7µF(475), ±10%(K)
+function parseMurataGcj(s) {
+  const m = s.match(/^GCJ(\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$/);
+  if (!m) return null;
+
+  const sizeCode2 = m[1];    // 2位尺寸码
+  const mediumCode = m[3];   // 2位温度特性码
+  const voltCode = m[4];     // 2位电压码
+  const capCode = m[5];      // 容量 EIA 码
+  const devLetter = m[6];    // 偏差字母
+
+  // 尺寸码映射（村田 GCJ 系列与 GRM 系列尺寸码相同）
+  const sizeMap = {
+    '03': '0201', '15': '0402', '18': '0603', '21': '0805',
+    '31': '1206', '32': '1210', '42': '1808', '43': '1812', '55': '2220'
+  };
+  const size = sizeMap[sizeCode2];
+  if (!size) return null;
+
+  // 温度特性码映射（村田 GCJ 系列）
+  const mediumMap = {
+    'C7': 'X7S', 'R7': 'X7R', 'R6': 'X5R', 'C8': 'X6S', 'D7': 'X7T'
+  };
+
+  // 电压码映射（村田 GCJ 系列与 GRM 系列电压码相同）
+  const voltMap = {
+    '0G': 4, '0L': 2.5, '0J': 6.3,
+    '1A': 10, '1C': 16, '1E': 25, '1V': 35, '1H': 50, '1K': 80,
+    '2A': 100, '2D': 200, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
     '3A': 1000, '3D': 2000
   };
 
@@ -1243,6 +1294,10 @@ function parseDescLoose(desc) {
   // 先尝试严格解析，成功则直接返回
   const strict = parseDesc(desc);
   if (strict) return strict;
+
+  // 尝试解析为其他品牌 MLCC 型号
+  const mlcc = parseOtherBrandMlcc(desc);
+  if (mlcc) return mlcc;
 
   // 宽松解析：从文本中提取所有能识别的字段
   let text = String(desc).replace(/，/g, ',').replace(/μ/g, 'µ').replace(/％/g, '%').trim();

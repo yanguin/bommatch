@@ -6,6 +6,69 @@
   <title>BOM型号匹配工具</title>
   <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css">
   <style>
+    
+    :root {
+      /* 配色方案 - Notion */
+      --color-background: #ffffff; /* Notion canvas / surface */
+      --color-background-secondary: #f6f5f4; /* Notion canvas-soft */
+      --color-border: #e6e6e6; /* Notion hairline */
+      --color-border-emphasis: #a39e98; /* Notion ink-faint */
+      --color-text-primary: #000000; /* Notion ink (near black) */
+      --color-text-secondary: #31302e; /* Notion ink-secondary (warm charcoal) */
+      --color-text-tertiary: #615d59; /* Notion ink-muted (stone) */
+      --color-accent: #0075de; /* Notion primary blue */
+      --color-accent-active: #005bab; /* Notion primary-active blue */
+      --color-success: #1aae39; /* Notion accent-green */
+      --color-warning: #dd5b00; /* Notion accent-orange */
+      --color-error: #ff64c8; /* Notion accent-pink (using for error, as per Notion's decorative palette for status) */
+
+      /* 字体与层级 - Notion */
+      --font-stack: NotionInter, Inter, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-size-h1: 26px;
+      --font-weight-h1: 700;
+      --line-height-h1: 1.23; /* from Notion heading-2 */
+      --letter-spacing-h1: -0.625px; /* from Notion heading-2 */
+      --font-size-section-title: 22px;
+      --font-weight-section-title: 700;
+      --line-height-section-title: 1.27; /* from Notion heading-3 */
+      --letter-spacing-section-title: -0.25px; /* from Notion heading-3 */
+      --font-size-label: 14px;
+      --font-weight-label: 400;
+      --line-height-label: 1.43; /* from Notion caption */
+      --font-size-body: 15px;
+      --font-weight-body: 400;
+      --line-height-body: 1.33; /* from Notion body-sm */
+      --font-size-table-content: 14px;
+      --font-weight-table-content: 400;
+      --line-height-table-content: 1.43; /* from Notion caption */
+
+      /* 布局与间距 - Notion */
+      --spacing-xxs: 4px; /* Notion xxs */
+      --spacing-xs: 8px;  /* Notion xs */
+      --spacing-sm: 12px; /* Notion sm */
+      --spacing-md: 16px; /* Notion md */
+      --spacing-lg: 24px; /* Notion lg */
+      --spacing-xl: 28px; /* Notion xl */
+      --spacing-xxl: 32px; /* Notion xxl */
+
+      --spacing-section: var(--spacing-lg);
+      --spacing-form-item: var(--spacing-md);
+
+      --height-button-small: 36px;
+      --height-button-default: 40px;
+      --height-input: 36px;
+
+      --border-radius-xs: 4px; /* Notion xs */
+      --border-radius-sm: 5px; /* Notion sm */
+      --border-radius-md: 8px; /* Notion md */
+      --border-radius-lg: 12px; /* Notion lg */
+      --border-radius-xl: 16px; /* Notion xl */
+      --border-radius-full: 9999px; /* Notion full */
+
+      --border-radius-small: var(--border-radius-xs); /* 输入框 */
+      --border-radius-medium: var(--border-radius-sm); /* 按钮 */
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -13,10 +76,13 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: #f5f7fa;
+      font-family: var(--font-stack);
+      font-size: var(--font-size-body);
+      line-height: var(--line-height-body);
+      background: var(--color-background-secondary);
       height: 100vh;
       overflow: hidden;
+      color: var(--color-text-primary); /* 默认文字颜色 */
     }
 
     #app {
@@ -25,22 +91,85 @@
       flex-direction: column;
     }
 
+    /* 头部 Header */
     .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      background: var(--color-background);
+      color: var(--color-text-primary);
       padding: 20px 30px;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: none; /* 去除阴影 */
+      border-bottom: 1px solid var(--color-border);
     }
 
     .header h1 {
-      font-size: 24px;
-      font-weight: 600;
-      margin-bottom: 5px;
+      font-size: var(--font-size-h1);
+      font-weight: var(--font-weight-h1);
+      line-height: var(--line-height-h1);
+      letter-spacing: var(--letter-spacing-h1);
+      color: var(--color-text-primary);
+      margin-bottom: var(--spacing-xxs);
     }
 
     .header p {
+      font-size: var(--font-size-body);
+      font-weight: var(--font-weight-body);
+      line-height: var(--line-height-body);
+      color: var(--color-text-secondary);
+      opacity: 1;
+    }
+
+    /* 品牌选择器 */
+    .el-select .el-input__inner {
+      border: 1px solid var(--color-border) !important;
+      background-color: var(--color-background) !important;
+      height: var(--height-input) !important;
+      line-height: var(--height-input) !important;
+      border-radius: var(--border-radius-small) !important;
+      color: var(--color-text-primary) !important;
+    }
+    .el-select .el-input.is-active .el-input__inner,
+    .el-select .el-input__inner:focus {
+      border-color: var(--color-accent) !important;
+      outline: none !important;
+    }
+    .el-select-dropdown__item {
+      color: var(--color-text-primary);
+    }
+    .el-select-dropdown__item.hover, .el-select-dropdown__item:hover {
+      background-color: var(--color-background-secondary);
+    }
+    .el-select-dropdown__item.selected {
+      color: var(--color-accent);
+      font-weight: 600;
+    }
+
+    /* 置顶按钮 */
+    .pin-btn {
+      background: var(--color-background-secondary);
+      border: 1px solid var(--color-border);
+      width: 32px; /* 稍微大一点 */
+      height: 32px; /* 稍微大一点 */
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      margin-top: 0; /* 调整位置 */
+    }
+
+    .pin-btn:hover {
+      background: var(--color-border);
+      border-color: var(--color-border-emphasis);
+    }
+
+    .pin-btn.pinned {
+      background: var(--color-border-emphasis);
+      border-color: var(--color-border-emphasis);
+    }
+
+    .pin-btn i {
       font-size: 14px;
-      opacity: 0.9;
+      color: var(--color-text-secondary);
     }
 
     .main-content {
@@ -49,54 +178,88 @@
       overflow: hidden;
     }
 
+    /* 左侧面板 */
     .left-panel {
-      width: 320px;
-      min-width: 320px;
-      max-width: 320px;
-      background: white;
-      border-right: 1px solid #e4e7ed;
-      padding: 15px;
+      width: 340px; /* 固定340px */
+      min-width: 340px;
+      max-width: 340px;
+      background: var(--color-background);
+      border-right: 1px solid var(--color-border);
+      padding: var(--spacing-section); /* 区块间距 */
       overflow-y: auto;
       flex-shrink: 0;
     }
 
-    .right-panel {
-      flex: 1;
-      min-width: 200px;
-      display: flex;
-      flex-direction: column;
-      background: #f5f7fa;
-      overflow: hidden;
-    }
-
+    /* 区块标题 */
     .section-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: #303133;
-      margin-bottom: 15px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid #667eea;
+      font-size: var(--font-size-section-title);
+      font-weight: var(--font-weight-section-title);
+      line-height: var(--line-height-section-title);
+      letter-spacing: var(--letter-spacing-section-title);
+      color: var(--color-text-primary);
+      margin-bottom: var(--spacing-sm);
+      padding-bottom: var(--spacing-xs);
+      border-bottom: 1px solid var(--color-border); /* 纯色边框 */
     }
 
     .form-item {
-      margin-bottom: 20px;
+      margin-bottom: var(--spacing-form-item);
     }
 
     .form-label {
       display: block;
-      font-size: 14px;
-      color: #606266;
+      font-size: var(--font-size-label);
+      color: var(--color-text-secondary);
       margin-bottom: 8px;
       font-weight: 500;
     }
 
+    /* 输入框 */
+    .el-input__inner, .el-textarea__inner {
+      border: 1px solid var(--color-border) !important;
+      background-color: var(--color-background) !important;
+      height: var(--height-input) !important;
+      line-height: var(--height-input) !important;
+      border-radius: var(--border-radius-small) !important;
+      color: var(--color-text-primary) !important;
+    }
+    .el-input__inner::placeholder, .el-textarea__inner::placeholder {
+      color: var(--color-text-tertiary) !important;
+    }
+    .el-input.is-active .el-input__inner,
+    .el-input__inner:focus,
+    .el-textarea__inner:focus {
+      border-color: var(--color-accent) !important;
+      outline: none !important;
+    }
+    .el-input-number {
+      line-height: normal !important; /* 修复 el-input-number 高度 */
+    }
+    .el-input-number .el-input__inner {
+      height: var(--height-input) !important;
+      line-height: var(--height-input) !important;
+    }
+    .el-input-number__decrease, .el-input-number__increase {
+      height: calc(var(--height-input) - 2px) !important;
+      line-height: calc(var(--height-input) - 2px) !important;
+      border-left: 1px solid var(--color-border) !important;
+      background: var(--color-background-secondary) !important;
+    }
+    .el-input-number__decrease:hover, .el-input-number__increase:hover {
+      color: var(--color-accent) !important;
+    }
+    .el-input-number__decrease.is-disabled, .el-input-number__increase.is-disabled {
+      color: var(--color-text-tertiary) !important;
+    }
+
     .file-display {
-      font-size: 13px;
-      color: #909399;
+      font-size: var(--font-size-label);
+      color: var(--color-text-secondary);
       margin-top: 8px;
       padding: 8px 12px;
-      background: #f5f7fa;
-      border-radius: 4px;
+      background: var(--color-background-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-small);
       word-break: break-all;
     }
 
@@ -114,46 +277,49 @@
       margin-top: 15px;
     }
 
+    /* 统计卡片 */
     .stat-card {
-      background: #f5f7fa;
+      background: var(--color-background-secondary);
       padding: 12px;
-      border-radius: 6px;
+      border-radius: var(--border-radius-small);
       text-align: center;
+      border: 1px solid var(--color-border); /* 添加边框 */
     }
 
     .stat-card.full-width {
       grid-column: 1 / -1;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      background: var(--color-background); /* 使用白色背景代替蓝色色块 */
+      border: 1px solid var(--color-accent); /* 使用强调色边框 */
     }
 
     .stat-card.full-width .stat-value {
-      color: white;
-      font-size: 28px;
+      color: var(--color-accent); /* 强调色文字 */
+      font-size: 20px; /* 调整为20px */
     }
 
     .stat-card.full-width .stat-label {
-      color: rgba(255, 255, 255, 0.9);
+      color: var(--color-text-secondary); /* 次要文字颜色 */
+      font-size: 12px;
     }
 
     .stat-value {
       font-size: 20px;
       font-weight: 600;
-      color: #667eea;
+      color: var(--color-text-primary);
     }
 
     .stat-label {
       font-size: 12px;
-      color: #909399;
+      color: var(--color-text-secondary);
       margin-top: 4px;
     }
 
     /* 模式切换标签 */
     .mode-tabs {
       display: flex;
-      margin-bottom: 20px;
-      border: 1px solid #dcdfe6;
-      border-radius: 6px;
+      margin-bottom: var(--spacing-section);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-small);
       overflow: hidden;
     }
 
@@ -162,12 +328,12 @@
       padding: 10px 0;
       text-align: center;
       cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      color: #606266;
-      background: #f5f7fa;
-      transition: all 0.3s;
-      border-right: 1px solid #dcdfe6;
+      font-size: var(--font-size-body);
+      font-weight: var(--font-weight-label);
+      color: var(--color-text-secondary);
+      background: var(--color-background-secondary);
+      transition: all 0.2s;
+      border-right: 1px solid var(--color-border);
     }
 
     .mode-tab:last-child {
@@ -175,8 +341,9 @@
     }
 
     .mode-tab.active {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      background: var(--color-background);
+      color: var(--color-accent);
+      font-weight: 600;
     }
 
     /* 容量容差范围行内布局 */
@@ -191,44 +358,52 @@
     }
 
     .tolerance-inline .tolerance-text {
-      font-size: 12px;
-      color: #909399;
+      font-size: var(--font-size-label);
+      color: var(--color-text-secondary);
     }
 
     /* 型号筛选 - 选项区域 */
     .filter-section {
-      margin-bottom: 18px;
+      margin-bottom: var(--spacing-form-item);
     }
 
     .filter-section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #303133;
+      font-size: var(--font-size-label);
+      font-weight: var(--font-weight-section-title);
+      color: var(--color-text-primary);
       margin-bottom: 8px;
     }
 
-    /* 一行显示两个（尺寸代码、温度特性） */
+    /* Checkbox Group 布局 */
     .filter-checkbox-group-2cols {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 6px 8px;
     }
-
-    .filter-checkbox-group-2cols .el-checkbox {
-      margin-right: 0;
-      margin-bottom: 0;
-    }
-
-    /* 一行显示三个（容量偏差） */
     .filter-checkbox-group-3cols {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 6px 8px;
     }
-
+    .filter-checkbox-group-2cols .el-checkbox,
     .filter-checkbox-group-3cols .el-checkbox {
       margin-right: 0;
       margin-bottom: 0;
+    }
+    /* Checkbox 样式 */
+    .el-checkbox__input.is-checked .el-checkbox__inner {
+      background-color: var(--color-accent) !important;
+      border-color: var(--color-accent) !important;
+    }
+    .el-checkbox__input.is-checked + .el-checkbox__label {
+      color: var(--color-accent) !important;
+    }
+    .el-checkbox__inner:hover {
+      border-color: var(--color-accent) !important;
+    }
+    .el-checkbox__label {
+      font-size: var(--font-size-table-content) !important;
+      color: var(--color-text-primary) !important;
     }
 
     .filter-input-group {
@@ -244,11 +419,11 @@
     /* 统一单位框样式 */
     .unit-box {
       padding: 6px 12px;
-      background: #f5f7fa;
-      border: 1px solid #dcdfe6;
-      border-radius: 4px;
-      font-size: 12px;
-      color: #606266;
+      background: var(--color-background-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-small);
+      font-size: var(--font-size-label);
+      color: var(--color-text-secondary);
       min-width: 60px;
       text-align: center;
     }
@@ -259,59 +434,198 @@
       margin-top: 15px;
     }
 
+    /* 按钮样式 */
+    .el-button {
+      border-radius: var(--border-radius-medium) !important;
+      height: var(--height-button-default);
+      padding: 0 var(--spacing-lg);
+      font-weight: var(--font-weight-label);
+      box-shadow: none !important; /* Notion 风格：去除按钮阴影 */
+    }
+    .el-button--small {
+      height: var(--height-button-small);
+      padding: 0 15px;
+      font-size: 13px;
+    }
+    .el-button--mini {
+      height: 28px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    /* 主按钮 */
+    .el-button--primary {
+      background-color: var(--color-accent) !important;
+      border-color: var(--color-accent) !important;
+      color: var(--color-background) !important;
+    }
+    .el-button--primary:hover, .el-button--primary:focus {
+      background-color: var(--color-accent-active) !important;
+      border-color: var(--color-accent-active) !important;
+      color: var(--color-background) !important;
+      opacity: 0.9; /* Subtle hover effect */
+    }
+    .el-button--primary.is-disabled {
+      background-color: var(--color-border-emphasis) !important;
+      border-color: var(--color-border-emphasis) !important;
+      color: var(--color-text-tertiary) !important; /* Muted text color for disabled state */
+    }
+
+    /* 次按钮 */
+    .el-button--default {
+      background-color: var(--color-background) !important;
+      border: 1px solid var(--color-border) !important;
+      color: var(--color-text-primary) !important;
+    }
+    .el-button--default:hover, .el-button--default:focus {
+      background-color: var(--color-background-secondary) !important;
+      border-color: var(--color-border-emphasis) !important;
+      color: var(--color-text-primary) !important;
+    }
+
+    /* 成功按钮 */
+    .el-button--success {
+      background-color: var(--color-success) !important;
+      border-color: var(--color-success) !important;
+      color: var(--color-background) !important;
+    }
+    .el-button--success:hover, .el-button--success:focus {
+      background-color: var(--color-success) !important; /* Use same success color for hover/focus */
+      border-color: var(--color-success) !important;
+      color: var(--color-background) !important;
+      opacity: 0.9; /* Subtle hover effect */
+    }
+
+    .right-panel {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      background: var(--color-background-secondary); /* 结果区背景 */
+      overflow: hidden;
+    }
+
     .results-header {
-      background: white;
+      background: var(--color-background);
       padding: 15px 20px;
-      border-bottom: 1px solid #e4e7ed;
+      border-bottom: 1px solid var(--color-border);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      color: var(--color-text-primary);
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .results-header span {
+      color: var(--color-text-primary);
+    }
+    .results-header span[style*="color: #909399"] { /* 副标题文字 */
+      color: var(--color-text-secondary) !important;
+      font-weight: var(--font-weight-body) !important;
+    }
+    .results-header .el-input__inner {
+      background-color: var(--color-background) !important;
+      border-color: var(--color-border) !important;
+      color: var(--color-text-primary) !important;
+    }
+    .results-header .el-input.is-focus .el-input__inner {
+      border-color: var(--color-accent) !important;
+    }
+    .results-header .el-select-dropdown__item.selected {
+      color: var(--color-accent) !important;
     }
 
     .results-body {
       flex: 1;
-      overflow: hidden; /* 防止双滚动条 */
-      padding: 20px;
+      overflow: hidden;
+      padding: var(--spacing-section);
       display: flex;
       flex-direction: column;
     }
 
+    /* 空状态 */
     .empty-state {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       height: 100%;
-      color: #909399;
+      color: var(--color-text-tertiary);
     }
 
     .empty-state i {
       font-size: 80px;
-      margin-bottom: 20px;
-      color: #dcdfe6;
+      margin-bottom: var(--spacing-form-item);
+      color: var(--color-border-emphasis); /* 图标颜色 */
     }
 
+    /* 表格 */
     .el-table {
-      font-size: 13px;
+      font-size: var(--font-size-table-content);
+      border: 1px solid var(--color-border); /* 表格整体边框 */
+      border-radius: 0; /* 无圆角 */
+    }
+    .el-table th {
+      background-color: var(--color-background-secondary) !important;
+      color: var(--color-text-secondary) !important;
+      font-weight: var(--font-weight-label) !important;
+      border-color: var(--color-border) !important;
+    }
+    .el-table td, .el-table th.is-leaf {
+      border-bottom: 1px solid var(--color-border) !important;
+    }
+    .el-table--striped .el-table__body tr.el-table__row--striped td {
+      background-color: var(--color-background-secondary) !important;
+    }
+    .el-table__row:hover {
+      background-color: var(--color-background-secondary) !important;
+    }
+    .el-table .el-link {
+      color: var(--color-accent);
     }
 
     .status-tag {
       font-size: 12px;
+      height: 24px;
+      line-height: 22px;
+      padding: 0 8px;
+      border-radius: var(--border-radius-small);
+      border: none !important;
     }
+    .el-tag--success {
+      background-color: var(--color-success) !important;
+      color: var(--color-background) !important;
+    }
+    .el-tag--warning {
+      background-color: var(--color-warning) !important;
+      color: var(--color-background) !important;
+    }
+    .el-tag--info { /* 未匹配或未解析 */
+      background-color: var(--color-text-tertiary) !important;
+      color: var(--color-background) !important;
+    }
+    /* 特定tag颜色 */
+    .el-tag[type="A"] { background-color: var(--color-error) !important; color: var(--color-background) !important; } /* 系列 A, 使用 Notion 的 error 色，低饱和度 */
+    .el-tag[type="T"] { background-color: var(--color-warning) !important; color: var(--color-background) !important; } /* 系列 T, 使用 Notion 的 warning 色，低饱和度 */
+    .el-tag[type="B"] { background-color: var(--color-accent) !important; color: var(--color-background) !important; } /* 系列 B, 使用 Notion 的 accent 色，低饱和度 */
+    .el-tag[type="V"] { background-color: var(--color-success) !important; color: var(--color-background) !important; } /* 系列 V, 使用 Notion 的 success 色，低饱和度 */
+
 
     .match-names {
       white-space: pre-line;
-      font-size: 12px;
+      font-size: var(--font-size-table-content);
       line-height: 1.6;
+      color: var(--color-text-primary);
     }
 
+    /* Sheet 切换标签 */
     .sheet-tabs {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       padding: 8px 0 0 0;
-      border-top: 1px solid #ebeef5;
-      margin-top: 8px;
+      border-top: 1px solid var(--color-border);
+      margin-top: var(--spacing-form-item);
     }
 
     .sheet-tab {
@@ -319,36 +633,37 @@
       align-items: center;
       gap: 6px;
       padding: 4px 10px;
-      background: #f4f4f5;
-      border: 1px solid #e4e7ed;
-      border-radius: 4px;
+      background: var(--color-background-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-small);
       cursor: pointer;
-      font-size: 12px;
-      color: #606266;
+      font-size: var(--font-size-label);
+      color: var(--color-text-secondary);
       transition: all 0.2s;
       max-width: 180px;
     }
 
     .sheet-tab:hover {
-      background: #ecf5ff;
-      border-color: #c6e2ff;
-      color: #409eff;
+      background: var(--color-background);
+      border-color: var(--color-border-emphasis);
+      color: var(--color-text-primary);
     }
 
     .sheet-tab.active {
-      background: #409eff;
-      border-color: #409eff;
-      color: #fff;
+      background: var(--color-background);
+      border-color: var(--color-accent);
+      color: var(--color-accent);
     }
 
     .sheet-tab.skipped {
-      opacity: 0.55;
+      opacity: 0.6; /* 降低透明度而不是纯粹的0.55 */
+      border-color: var(--color-error); /* 使用错误色边框 */
+      color: var(--color-error);
     }
-
     .sheet-tab.skipped:hover {
-      background: #fef0f0;
-      border-color: #fbc4c4;
-      color: #f56c6c;
+      background: var(--color-background-secondary); /* 浅色背景 */
+      border-color: var(--color-error);
+      color: var(--color-error);
     }
 
     .sheet-tab-name {
@@ -362,19 +677,21 @@
       font-size: 11px;
       opacity: 0.8;
       flex-shrink: 0;
+      color: var(--color-text-secondary);
     }
 
     .sheet-tab-info.skipped {
-      color: #f56c6c;
+      color: var(--color-error);
     }
 
+    /* 加载遮罩 */
     .loading-mask {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.95); /* 更白的背景 */
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -382,61 +699,53 @@
       z-index: 9999;
     }
 
+    .loading-mask .el-icon-loading {
+      font-size: 50px;
+      color: var(--color-accent); /* 加载图标颜色 */
+    }
+
     .loading-text {
-      margin-top: 20px;
-      font-size: 16px;
-      color: #606266;
+      margin-top: var(--spacing-form-item);
+      font-size: var(--font-size-body);
+      color: var(--color-text-secondary);
     }
 
     .button-group {
       display: flex;
       gap: 10px;
-      margin-top: 20px;
+      margin-top: var(--spacing-section);
     }
 
     .progress-info {
       margin-top: 15px;
       padding: 12px;
-      background: #f0f9ff;
-      border-radius: 6px;
-      border-left: 3px solid #409eff;
-      font-size: 13px;
-      color: #606266;
+      background: var(--color-background-secondary);
+      border-radius: var(--border-radius-small);
+      border-left: 3px solid var(--color-accent);
+      font-size: var(--font-size-label);
+      color: var(--color-text-secondary);
     }
 
-    /* 置顶按钮 - 简洁圆形样式 */
-    .pin-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      cursor: pointer;
-      background: rgba(255, 255, 255, 0.2);
-      transition: background 0.2s;
-      margin-top: 8px;
+    /* Element UI 覆盖 - 滚动条 */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: var(--color-border-emphasis);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background-color: var(--color-background-secondary);
     }
 
-    .pin-btn:hover {
-      background: rgba(255, 255, 255, 0.35);
-    }
-
-    .pin-btn.pinned {
-      background: rgba(255, 255, 255, 0.4);
-    }
-
-    .pin-btn i {
-      font-size: 14px;
-      color: white;
-    }
   </style>
 </head>
 <body>
   <div id="app">
     <!-- 加载遮罩 -->
     <div v-if="loading" class="loading-mask">
-      <i class="el-icon-loading" style="font-size: 50px; color: #667eea;"></i>
+      <i class="el-icon-loading"></i>
       <div class="loading-text">{{ loadingText }}</div>
     </div>
 
@@ -472,10 +781,10 @@
         <!-- 模式切换 -->
         <div class="mode-tabs">
           <div class="mode-tab" :class="{ active: activeMode === 'bom' }" @click="switchMode('bom')">
-            📋 BOM匹配
+            BOM匹配
           </div>
           <div class="mode-tab" :class="{ active: activeMode === 'filter' }" @click="switchMode('filter')">
-            🔍 型号筛选
+            型号筛选
           </div>
         </div>
 
@@ -483,9 +792,9 @@
         <div v-show="activeMode === 'bom'">
           <!-- 文件选择 -->
           <div class="form-item">
-            <div class="section-title">📁 文件选择</div>
+            <div class="section-title">文件选择</div>
             <label class="form-label">BOM表文件</label>
-            <el-button @click="selectBomFile" size="small" type="primary" plain icon="el-icon-document">
+            <el-button @click="selectBomFile" size="small" type="primary" plain>
               选择Excel文件
             </el-button>
             <div v-if="bomPath" class="file-display">
@@ -504,7 +813,7 @@
               style="width: 100%;">
               <el-button slot="append" @click="descColumnName='物料描述'" size="small">默认</el-button>
             </el-input>
-            <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+            <div style="margin-top: 8px; font-size: 12px; color: var(--color-text-tertiary);">
               常用列名：物料描述、物料规格、PLMTITLE、规格型号、Description等
             </div>
             <!-- <div style="margin-top: 8px; padding: 8px 10px; background: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff; font-size: 12px; color: #606266; line-height: 1.7;">
@@ -527,8 +836,8 @@
               <el-checkbox label="B">B系列 - 工业设备</el-checkbox>
               <el-checkbox label="V">V系列 - 通用设备</el-checkbox>
             </el-checkbox-group>
-            <div v-if="selectedSeries.length === 0" style="margin-top: 8px; color: #f56c6c; font-size: 12px;">
-              ⚠️ 未选择任何系列，将匹配全部产品
+            <div v-if="selectedSeries.length === 0" style="margin-top: 8px; color: var(--color-error); font-size: 12px;">
+              未选择任何系列，将匹配全部产品
             </div>
           </div>
 
@@ -550,7 +859,7 @@
 
           <!-- 统计信息 -->
           <div v-if="stats" class="form-item">
-            <div class="section-title">📊 匹配统计</div>
+            <div class="section-title">匹配统计</div>
             <div class="stats-grid">
               <div class="stat-card full-width">
                 <div class="stat-value">{{ stats.total }}</div>
@@ -594,7 +903,7 @@
 
           <!-- 导出按钮 -->
           <div v-if="matchData" class="button-group">
-            <el-button type="success" @click="exportExcel" icon="el-icon-download" style="flex: 1;">
+            <el-button type="success" @click="exportExcel" style="flex: 1;">
               导出Excel
             </el-button>
           </div>
@@ -613,14 +922,14 @@
               @keyup.enter.native="parseAndFill">
             </el-input>
             <div class="filter-actions">
-              <el-button type="primary" @click="parseAndFill" icon="el-icon-edit-outline" style="flex: 1;">
+              <el-button type="primary" @click="parseAndFill" style="flex: 1;">
                 解析
               </el-button>
-              <el-button type="success" @click="parseAndQuery" icon="el-icon-search" style="flex: 1;">
+              <el-button type="success" @click="parseAndQuery" style="flex: 1;">
                 查询
               </el-button>
             </div>
-            <div style="margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.6;">
+            <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
               支持品牌型号自动解析：<br>
               微容、国巨、三星、信昌、禾伸堂、京瓷、风华、火炬、村田、TDK、太阳诱电...
               <!-- • 微容：<code style="color:#e96900;">T106K1206X7T100N2P</code>（A/T/B/V 开头）<br>
@@ -725,17 +1034,17 @@
 
           <!-- 操作按钮 -->
           <div class="filter-actions">
-            <el-button type="primary" @click="runFilter" :loading="filtering" icon="el-icon-search" style="flex: 1;">
+            <el-button type="primary" @click="runFilter" :loading="filtering" style="flex: 1;">
               查询
             </el-button>
-            <el-button @click="resetFilter" icon="el-icon-refresh" style="flex: 1;">
+            <el-button @click="resetFilter" style="flex: 1;">
               重置
             </el-button>
           </div>
 
           <!-- 筛选结果统计 -->
           <div v-if="filterResult" class="form-item" style="margin-top: 20px;">
-            <div class="section-title">📊 筛选结果</div>
+            <div class="section-title">筛选结果</div>
             <div class="stats-grid">
               <div class="stat-card full-width">
                 <div class="stat-value">{{ filterResult.length }}</div>
@@ -743,7 +1052,7 @@
               </div>
             </div>
             <div v-if="filterResult.length > 0" class="button-group" style="margin-top: 15px;">
-              <el-button type="success" @click="exportFilterResult" icon="el-icon-download" style="flex: 1;">
+              <el-button type="success" @click="exportFilterResult" style="flex: 1;">
                 导出Excel
               </el-button>
             </div>
@@ -767,10 +1076,10 @@
 
           <!-- 操作按钮 -->
           <div class="filter-actions">
-            <el-button type="primary" @click="parseQmInput" icon="el-icon-edit-outline" style="flex: 1;">
+            <el-button type="primary" @click="parseQmInput" style="flex: 1;">
               解析
             </el-button>
-            <el-button type="success" @click="runQmFilter" :loading="qmFiltering" icon="el-icon-search" style="flex: 1;">
+            <el-button type="success" @click="runQmFilter" :loading="qmFiltering" style="flex: 1;">
               查询
             </el-button>
           </div>
@@ -782,20 +1091,20 @@
               <div style="display: flex; gap: 8px;">
                 <el-button size="mini" type="text" @click="toggleQmAll(true)">全选</el-button>
                 <el-button size="mini" type="text" @click="toggleQmAll(false)">全不选</el-button>
-                <el-button size="mini" type="text" @click="clearQmParsed" style="color: #f56c6c;">清空</el-button>
+                <el-button size="mini" type="text" @click="clearQmParsed" style="color: var(--color-error);">清空</el-button>
               </div>
             </div>
-            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 4px; padding: 8px;">
-              <div v-for="(item, idx) in qmParsedItems" :key="idx" style="display: flex; align-items: center; padding: 4px 0; border-bottom: 1px solid #f5f7fa;">
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 4px; padding: 8px;">
+              <div v-for="(item, idx) in qmParsedItems" :key="idx" style="display: flex; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--color-background-secondary);">
                 <el-checkbox v-model="item.checked" style="margin-right: 8px;"></el-checkbox>
-                <span :style="{ color: item.checked ? '#409eff' : '#909399', fontWeight: item.checked ? '600' : 'normal', fontSize: '13px' }">{{ item.partNumber }}</span>
+                <span :style="{ color: item.checked ? 'var(--color-accent)' : 'var(--color-text-tertiary)', fontWeight: item.checked ? '600' : 'normal', fontSize: '13px' }">{{ item.partNumber }}</span>
               </div>
             </div>
           </div>
 
           <!-- 筛选结果统计 -->
           <div v-if="qmFilterResult" class="form-item" style="margin-top: 20px;">
-            <div class="section-title">📊 筛选结果</div>
+            <div class="section-title">筛选结果</div>
             <div class="stats-grid">
               <div class="stat-card full-width">
                 <div class="stat-value">{{ qmFilterResult.length }}</div>
@@ -803,7 +1112,7 @@
               </div>
             </div>
             <div v-if="qmFilterResult.length > 0" class="button-group" style="margin-top: 15px;">
-              <el-button type="success" @click="exportQmFilterResult" icon="el-icon-download" style="flex: 1;">
+              <el-button type="success" @click="exportQmFilterResult" style="flex: 1;">
                 导出Excel
               </el-button>
             </div>
@@ -814,22 +1123,22 @@
       <!-- 右侧结果面板 -->
       <div class="right-panel">
         <div class="results-header">
-          <div style="font-size: 16px; font-weight: 600; color: #303133;">
+          <div style="font-size: 16px; font-weight: 600; color: var(--color-text-primary);">
             <!-- 微容品牌 -->
             <template v-if="currentBrand === 'weirong'">
               <span v-if="activeMode === 'bom'">匹配结果</span>
               <span v-else>筛选结果</span>
-              <span v-if="activeMode === 'bom' && matchData" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+              <span v-if="activeMode === 'bom' && matchData" style="font-size: 14px; font-weight: normal; color: var(--color-text-secondary); margin-left: 10px;">
                 共 {{ filteredResults.length }} 条（总 {{ currentSheet ? currentSheet.data.tableData.length : 0 }} 条）
               </span>
-              <span v-if="activeMode === 'filter' && filterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+              <span v-if="activeMode === 'filter' && filterResult" style="font-size: 14px; font-weight: normal; color: var(--color-text-secondary); margin-left: 10px;">
                 共 {{ filteredFilterResult.length }} 条
               </span>
             </template>
             <!-- 强茂品牌 -->
             <template v-else>
               <span>筛选结果</span>
-              <span v-if="qmFilterResult" style="font-size: 14px; font-weight: normal; color: #909399; margin-left: 10px;">
+              <span v-if="qmFilterResult" style="font-size: 14px; font-weight: normal; color: var(--color-text-secondary); margin-left: 10px;">
                 共 {{ filteredQmFilterResult.length }} 条
               </span>
             </template>
@@ -849,7 +1158,6 @@
             <el-input
               v-model="searchText"
               placeholder="输入搜索内容..."
-              prefix-icon="el-icon-search"
               clearable
               size="small"
               style="width: 200px;">
@@ -873,7 +1181,6 @@
             <el-input
               v-model="filterSearchText"
               placeholder="搜索产品型号..."
-              prefix-icon="el-icon-search"
               clearable
               size="small"
               style="width: 250px;">
@@ -884,7 +1191,6 @@
             <el-input
               v-model="qmSearchText"
               placeholder="搜索产品型号..."
-              prefix-icon="el-icon-search"
               clearable
               size="small"
               style="width: 250px;">
@@ -900,7 +1206,6 @@
             <div>请选择BOM表文件并点击"开始匹配"</div>
           </div>
 
-          <!-- 空状态 - 型号筛选 -->
           <div v-if="currentBrand === 'weirong' && activeMode === 'filter' && !filterResult" class="empty-state">
             <i class="el-icon-search"></i>
             <div>请设置筛选条件并点击"查询"</div>
@@ -914,7 +1219,7 @@
             border
             :height="tableHeight"
             style="flex: 1;"
-            :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
+            :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
             <el-table-column prop="originalIndex" label="#" width="50" align="center"></el-table-column>
             <el-table-column prop="desc" label="物料描述" min-width="200">
               <template slot-scope="scope">
@@ -930,7 +1235,7 @@
             </el-table-column>
             <el-table-column prop="matchCount" label="匹配数量" width="90" align="center">
               <template slot-scope="scope">
-                <span :style="{color: scope.row.matchCount > 0 ? '#67C23A' : '#909399', fontWeight: '600'}">
+                <span :style="{color: scope.row.matchCount > 0 ? 'var(--color-success)' : 'var(--color-text-tertiary)', fontWeight: '600'}">
                   {{ scope.row.matchCount }}
                 </span>
               </template>
@@ -949,7 +1254,7 @@
             <el-table-column label="规格书" width="80" align="center">
               <template slot-scope="scope">
                 <!-- 无匹配或无规格书 -->
-                <span v-if="scope.row.matchCount === 0 || !scope.row.specsList || scope.row.specsList.length === 0" style="color:#909399;">-</span>
+                <span v-if="scope.row.matchCount === 0 || !scope.row.specsList || scope.row.specsList.length === 0" style="color: var(--color-text-tertiary);">-</span>
                 <!-- 单个规格书：直接点击图标 -->
                 <el-link v-else-if="scope.row.specsList.length === 1"
                   type="primary"
@@ -1006,11 +1311,11 @@
             border
             :height="tableHeight"
             style="flex: 1;"
-            :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
+            :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
             <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
             <el-table-column prop="productName" label="产品型号" min-width="180">
               <template slot-scope="scope">
-                <span style="font-weight: 600; color: #409eff;">{{ scope.row.productName }}</span>
+                <span style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="series" label="系列" width="80" align="center">
@@ -1026,7 +1331,7 @@
             <!-- 规格书列 -->
             <el-table-column label="规格书" width="80" align="center">
               <template slot-scope="scope">
-                <span v-if="!scope.row.specs || scope.row.specs.length === 0" style="color:#909399;">-</span>
+                <span v-if="!scope.row.specs || scope.row.specs.length === 0" style="color: var(--color-text-tertiary);">-</span>
                 <el-link v-else-if="scope.row.specs.length === 1"
                   type="primary" icon="el-icon-document"
                   @click="openSpecUrl(scope.row.specs[0].FileUrl)"
@@ -1062,11 +1367,11 @@
             border
             :height="tableHeight"
             style="flex: 1;"
-            :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight:'600'}">
+            :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
             <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
             <el-table-column prop="partNumber" label="产品型号" min-width="180">
               <template slot-scope="scope">
-                <span style="font-weight: 600; color: #409eff;">{{ scope.row.partNumber }}</span>
+                <span style="font-weight: 600; color: var(--color-accent);">{{ scope.row.partNumber }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="package" label="封装" min-width="140"></el-table-column>
@@ -1088,7 +1393,7 @@
                   @click="openSpecUrl(scope.row.specUrl)"
                   title="点击打开规格书">
                 </el-link>
-                <span v-else style="color:#909399;">-</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
               </template>
             </el-table-column>
           </el-table>
