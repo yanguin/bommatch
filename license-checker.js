@@ -3,10 +3,10 @@ const fs = require('fs');
 const path = require('path');
 
 // Gitee 仓库 version.txt 的 raw 地址（master 分支）
-const REMOTE_VERSION_URL = 'https://gitee.com/yanguin/bommatch/raw/master/version.txt';
+const REMOTE_RAW_URL = 'https://gitee.com/yanguin/bommatch/raw/master/version.txt';
+// Gitee API 地址（raw 链接被拦截时的备用方案）
+const REMOTE_API_URL = 'https://gitee.com/api/v5/repos/yanguin/bommatch/contents/version.txt?ref=master';
 
-// 云函数 URL（腾讯云 SCF 函数 URL）
-// const LICENSE_URL = 'https://1449115859-lvc153q7j1.ap-guangzhou.tencentscf.com';
 // 本地 version.txt 路径
 const LOCAL_VERSION_PATH = path.join(__dirname, 'version.txt');
 
@@ -19,11 +19,20 @@ let onExpiredCallback = null;
 let currentDuration = DEFAULT_DURATION; // 当前使用时长限制（秒）
 
 /**
+ * 校验版本号格式（至少匹配 x.y 或 x.y.z）
+ * @param {string} version - 版本号字符串
+ * @returns {boolean}
+ */
+function isValidVersion(version) {
+  return /^\d+\.\d+(\.\d+)?/.test((version || '').trim());
+}
+
+/**
  * 解析 version.txt 内容（支持 JSON 和纯文本格式）
  * JSON 格式：{"version": "1.2.0", "duration": 16200, "enabled": true}
  * 纯文本格式：整行作为版本号
  * @param {string} content - 文件内容
- * @returns {{version: string, duration: number, enabled: boolean, message: string}}
+ * @returns {{version: string, duration: number, enabled: boolean, message: string}|null} 解析失败返回 null
  */
 function parseVersionFile(content) {
   const text = (content || '').trim();
@@ -46,6 +55,11 @@ function parseVersionFile(content) {
   }
 
   // 纯文本格式：整行作为版本号
+  // 如果内容包含 HTML 标签或多行，说明不是有效的版本文件
+  if (text.includes('<') || text.includes('\n')) {
+    return null;
+  }
+
   return {
     version: text,
     duration: DEFAULT_DURATION,
@@ -61,7 +75,8 @@ function parseVersionFile(content) {
 function readLocalVersion() {
   try {
     const content = fs.readFileSync(LOCAL_VERSION_PATH, 'utf8');
-    return parseVersionFile(content);
+    const parsed = parseVersionFile(content);
+    return parsed || { version: '', duration: DEFAULT_DURATION, enabled: true, message: '' };
   } catch (e) {
     return { version: '', duration: DEFAULT_DURATION, enabled: true, message: '' };
   }
@@ -85,12 +100,18 @@ function compareVersions(v1, v2) {
 }
 
 /**
- * HTTP GET 请求（支持重定向）
+ * HTTP GET 请求（支持重定向，带 User-Agent）
  * @param {string} url - 请求地址
  * @param {Function} callback - 回调 (err, data, statusCode)
  */
 function httpGet(url, callback) {
-  const req = https.get(url, (res) => {
+  const options = {
+    headers: {
+      'User-Agent': 'BOMMatch/1.0 (Electron Desktop App)'
+    }
+  };
+
+  const req = https.get(url, options, (res) => {
     // 处理 3xx 重定向
     if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
       res.resume();
@@ -116,6 +137,31 @@ function httpGet(url, callback) {
 }
 
 /**
+ * 从 Gitee API 获取 version.txt 内容（备用方案）
+ * API 返回 JSON，content 字段为 base64 编码
+ * @param {Function} callback - 回调 (err, content)
+ */
+function fetchViaApi(callback) {
+  httpGet(REMOTE_API_URL, (err, data, statusCode) => {
+    if (err || statusCode !== 200) {
+      callback(new Error('api failed'), null);
+      return;
+    }
+    try {
+      const json = JSON.parse(data);
+      if (json.content && json.encoding === 'base64') {
+        const content = Buffer.from(json.content, 'base64').toString('utf8');
+        callback(null, content);
+      } else {
+        callback(new Error('invalid api response'), null);
+      }
+    } catch (e) {
+      callback(e, null);
+    }
+  });
+}
+
+/**
  * 检查版本与授权状态（联网请求 gitee version.txt，与本地比对）
  * @returns {Promise<{enabled: boolean, needsUpdate: boolean, message: string, duration: number, localVersion: string, remoteVersion: string}>}
  */
@@ -123,9 +169,38 @@ function checkLicense() {
   return new Promise((resolve) => {
     const local = readLocalVersion();
 
-    httpGet(REMOTE_VERSION_URL, (err, data, statusCode) => {
-      // 网络错误或请求失败
-      if (err || statusCode !== 200) {
+    // 第一步：尝试 raw 链接
+    httpGet(REMOTE_RAW_URL, (err, data, statusCode) => {
+      const tryParseRemote = (content) => {
+        const remote = parseVersionFile(content);
+
+        // 解析失败或版本号无效（可能是 HTML 验证页面）
+        if (!remote || !isValidVersion(remote.version)) {
+          return null;
+        }
+        return remote;
+      };
+
+      // raw 链接成功且内容有效
+      if (!err && statusCode === 200) {
+        const remote = tryParseRemote(data);
+        if (remote) {
+          resolveResult(remote);
+          return;
+        }
+      }
+
+      // 第二步：raw 失败或内容无效，尝试 Gitee API
+      fetchViaApi((apiErr, apiContent) => {
+        if (!apiErr && apiContent) {
+          const remote = tryParseRemote(apiContent);
+          if (remote) {
+            resolveResult(remote);
+            return;
+          }
+        }
+
+        // 两种方式都失败
         resolve({
           enabled: false,
           needsUpdate: false,
@@ -134,11 +209,14 @@ function checkLicense() {
           localVersion: local.version,
           remoteVersion: ''
         });
-        return;
-      }
+      });
+    });
 
-      const remote = parseVersionFile(data);
-
+    /**
+     * 根据远程版本信息返回结果
+     * @param {{version: string, duration: number, enabled: boolean, message: string}} remote
+     */
+    function resolveResult(remote) {
       // 检查总开关：enabled 为 false 时，所有版本均不可用
       if (!remote.enabled) {
         resolve({
@@ -174,7 +252,7 @@ function checkLicense() {
         localVersion: local.version,
         remoteVersion: remote.version
       });
-    });
+    }
   });
 }
 
