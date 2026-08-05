@@ -38,7 +38,7 @@ function createWindow() {
 // 授权通过后启动窗口和计时器
 function startApp(duration) {
   createWindow();
-  // 启动使用计时器（时长由云函数控制，单位：秒）
+  // 启动使用计时器（时长由 gitee version.txt 控制，单位：秒）
   licenseChecker.startUsageTimer(duration, () => {
     if (mainWindow) {
       dialog.showMessageBoxSync(mainWindow, {
@@ -53,18 +53,29 @@ function startApp(duration) {
   });
 }
 
-// 启动前先进行联网授权检查
+// 启动前先进行联网版本检查（与 gitee version.txt 比对）
 app.whenReady().then(async () => {
   const result = await licenseChecker.checkLicense();
 
   if (!result.enabled) {
-    // 软件不可用：提示并退出
-    dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
+    if (result.needsUpdate) {
+      // 版本过旧：弹窗提示后退出
+      dialog.showMessageBoxSync({
+        type: 'warning',
+        title: '版本过期',
+        message: result.message,
+        buttons: ['确定'],
+        noLink: true
+      });
+    } else {
+      // 网络错误或软件被禁用
+      dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
+    }
     app.quit();
     return;
   }
 
-  // 授权通过，正常启动（传入云函数返回的使用时长）
+  // 版本通过，正常启动（传入远程返回的使用时长）
   startApp(result.duration);
 });
 
@@ -79,7 +90,17 @@ app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     const result = await licenseChecker.checkLicense();
     if (!result.enabled) {
-      dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
+      if (result.needsUpdate) {
+        dialog.showMessageBoxSync({
+          type: 'warning',
+          title: '版本过期',
+          message: result.message,
+          buttons: ['确定'],
+          noLink: true
+        });
+      } else {
+        dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
+      }
       app.quit();
       return;
     }
