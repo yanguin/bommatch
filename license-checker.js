@@ -29,7 +29,7 @@ function isValidVersion(version) {
 
 /**
  * 解析 version.txt 内容（支持 JSON 和纯文本格式）
- * JSON 格式：{"version": "1.2.0", "duration": 16200, "enabled": true}
+ * JSON 格式：{"version": "1.2.1", "duration": 16200, "enabled": true}
  * 纯文本格式：整行作为版本号
  * @param {string} content - 文件内容
  * @returns {{version: string, duration: number, enabled: boolean, message: string}|null} 解析失败返回 null
@@ -83,7 +83,7 @@ function readLocalVersion() {
 }
 
 /**
- * 比较两个语义化版本号（如 1.2.0）
+ * 比较两个语义化版本号（如 1.2.1）
  * @returns {number} 1 if v1 > v2, -1 if v1 < v2, 0 if equal
  */
 function compareVersions(v1, v2) {
@@ -235,7 +235,8 @@ function checkLicense() {
         resolve({
           enabled: false,
           needsUpdate: true,
-          message: `当前版本不是最新的，请更新到最新版本后再使用。\n当前版本：${local.version}\n最新版本：${remote.version}\n\n下载地址：https://gitee.com/yanguin/bommatch`,
+          message: `当前版本不是最新的，请更新到最新版本后再使用。\n当前版本：${local.version}\n
+          最新版本：${remote.version}`,
           duration: DEFAULT_DURATION,
           localVersion: local.version,
           remoteVersion: remote.version
