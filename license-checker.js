@@ -235,8 +235,7 @@ function checkLicense() {
         resolve({
           enabled: false,
           needsUpdate: true,
-          message: `当前版本不是最新的，请更新到最新版本后再使用。\n当前版本：${local.version}\n
-          最新版本：${remote.version}`,
+          message: `当前版本不是最新的，请更新到最新版本后再使用。\n当前版本：${local.version}\n最新版本：${remote.version}`,
           duration: DEFAULT_DURATION,
           localVersion: local.version,
           remoteVersion: remote.version
