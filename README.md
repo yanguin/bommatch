@@ -67,6 +67,8 @@ viiyong/
 ├── matcher-core.js      # 核心匹配逻辑
 ├── package.json         # 项目配置
 ├── README.md            # 项目说明
+├── DESIGN.md            # UI设计规范文档
+├── version.txt          # 版本号文件
 │
 ├── scripts/             # 爬虫脚本工具
 │   ├── fetch_full.js    # 爬取全量产品数据（wr）
@@ -74,12 +76,15 @@ viiyong/
 │   ├── scraper.js       # 爬虫脚本（备用）
 │   ├── json_to_xlsx.js  # JSON转Excel
 │   ├── matcher.js       # 命令行匹配器
+│   ├── incremental_update.js # 增量更新脚本
+│   ├── backup_and_fetch.bat # 备份并重新爬取
 │   └── 传出.txt         # 爬虫请求模板
 │
 ├── data/                # 数据文件
-│   ├── viiyong_products_full.json    # wr产品数据库（25933条）
+│   ├── viiyong_products_full.json    # wr产品数据库（22510条）
 │   ├── viiyong_products_full.xlsx    # wr产品数据Excel
 │   ├── qiangmao_products.json        # qm产品数据库
+│   ├── archive_*/      # 历史数据备份
 │   └── HSAE-*.xlsx                   # 示例文件
 │
 ├── build/               # 打包配置
@@ -155,6 +160,42 @@ node parse_qiangmao.js
 
 输出的文件移动到 `data/` 目录即可。
 
+### 5. 更新产品数据
+
+当微容官网数据更新时,可以使用自动备份并重新爬取脚本:
+
+**方法一: 一键更新（推荐）**
+
+直接运行脚本,自动备份旧数据并爬取新数据:
+```bash
+# Windows系统: 双击运行
+scripts\backup_and_fetch.bat
+
+# 或在项目根目录执行
+.\scripts\backup_and_fetch.bat
+```
+
+**方法二: 手动更新**
+
+分步执行备份、爬取、移动操作:
+```bash
+# 1. 备份旧数据（可选）
+# 手动将 data/ 目录下的 JSON 和 Excel 文件移到备份文件夹
+
+# 2. 爬取新数据
+cd scripts
+node fetch_full.js
+node json_to_xlsx.js
+
+# 3. 移动文件到 data 目录
+# 将 scripts/ 目录下生成的文件移到 data/ 目录
+```
+
+**备份说明:**
+- 自动备份脚本会创建以日期命名的备份文件夹（如 `data/archive_20260806/`）
+- 旧数据会自动移动到备份文件夹,方便以后查看
+- 备份文件夹保留所有历史版本,如需清理可手动删除
+
 ## 系列说明（wrMLCC）
 
 | 系列 | 应用场景 | 说明 |
@@ -213,6 +254,7 @@ node parse_qiangmao.js
 
 ## 更新日志
 
+- **v1.2.2** - 优化数据更新流程：添加自动备份脚本,修复硬编码产品数量问题
 - **v1.2.1** - 版本号升级
 - **v1.2.0** - 应用 Notion 设计系统，优化界面视觉风格：移除 emoji 和多余图标，替换高饱和度配色为低饱和度方案，调整组件样式与布局，提升整体简洁性与高级感
 - **v1.1.2** - 添加安装包版本校验功能，安装时自动比对Gitee最新版本

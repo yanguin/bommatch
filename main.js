@@ -262,7 +262,8 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
       filterForm.voltageValue;
 
     if (!hasCondition) {
-      return { error: '请至少设置一个筛选条件，否则会返回全部25933个产品，可能导致卡顿' };
+      const totalCount = products.total || (products.list ? products.list.length : 0);
+      return { error: `请至少设置一个筛选条件,否则会返回全部${totalCount}个产品,可能导致卡顿` };
     }
 
     let result = [];
