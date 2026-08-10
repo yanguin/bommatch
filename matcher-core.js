@@ -54,7 +54,7 @@ function normDev(s) {
   const m = v.match(/^(±)?(\d+(?:\.\d+)?)(%|pF)$/i);
   if (m) {
     const num = parseFloat(m[2]);
-    const numStr = Number.isInteger(num) ? String(num) : String(num);
+    const numStr = String(num);
     const unit = m[3].toLowerCase() === 'pf' ? 'pF' : '%';
     return '±' + numStr + unit;
   }
@@ -87,26 +87,11 @@ function eiaCodeToPf(code) {
 }
 
 // EIA 三位码转电压（V）
-// 规则与 eiaCodeToPf 一致：前两位为有效数字，第三位为乘数（10 的幂）
+// 规则与 eiaCodeToPf 一致，详见 eiaCodeToPf 注释
 // 用于风华/火炬等品牌的电压码解析
 // 例如：500=50V, 160=16V, 101=100V, 202=2000V；带 R 表示小数点：6R3=6.3V, 2R5=2.5V
 function eiaCodeToVolt(code) {
-  if (!code) return null;
-  const s = String(code).trim().toUpperCase();
-  // 标准 EIA 三位码
-  const m = s.match(/^(\d{1,2})(\d)$/);
-  if (m) {
-    const sig = parseInt(m[1], 10);
-    const mult = parseInt(m[2], 10);
-    if (isNaN(sig) || isNaN(mult)) return null;
-    return sig * Math.pow(10, mult);
-  }
-  // 带 R 的小数表示
-  if (/^\d*R\d*$/.test(s)) {
-    const val = parseFloat(s.replace(/R/i, '.'));
-    if (!isNaN(val)) return val;
-  }
-  return null;
+  return eiaCodeToPf(code);
 }
 
 // 公差字母码转标准偏差格式
@@ -600,12 +585,14 @@ function parseTdk(s) {
   };
 }
 
-// 村田 Murata GCM 系列车规级 MLCC 解析
-// 格式：GCM + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
+// 村田 Murata GCM/GRT 系列车规级 MLCC 解析（共享逻辑）
+// 格式：GCM/GRT + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
 // 示例：GCM155C1H221JA16D  → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
-//       GCM155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
-function parseMurataGcm(s) {
-  const m = s.match(/^GCM(\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$/);
+//       GRT155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
+// GCM 对应微容 A 系列（车载动力总成/安全），GRT 对应 T 系列（车载信息娱乐/舒适）
+function parseMurataCommon(s, prefix, series) {
+  const re = new RegExp('^' + prefix + '(\\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$');
+  const m = s.match(re);
   if (!m) return null;
 
   const sizeCode2 = m[1];    // 2位尺寸码
@@ -614,7 +601,6 @@ function parseMurataGcm(s) {
   const capCode = m[5];      // 容量 EIA 码
   const devLetter = m[6];    // 偏差字母
 
-  // 尺寸码映射（村田 GCM 系列与 GRM 系列尺寸码相同）
   const sizeMap = {
     '03': '0201', '15': '0402', '18': '0603', '21': '0805',
     '31': '1206', '32': '1210', '42': '1808', '43': '1812', '55': '2220'
@@ -622,8 +608,6 @@ function parseMurataGcm(s) {
   const size = sizeMap[sizeCode2];
   if (!size) return null;
 
-  // 温度特性码映射（村田 GCM 系列车规级）
-  // 注意：C2, 7U, 9E 等特殊介质微容筛选项中无对应选项，会置空
   const mediumMap = {
     '5C': 'C0G', '5G': 'X8G',
     'R6': 'X5R', 'R7': 'X7R', 'R9': 'X8R',
@@ -631,7 +615,6 @@ function parseMurataGcm(s) {
     'L8': 'X8L', 'M8': 'X8M', 'N8': 'X8N'
   };
 
-  // 电压码映射（村田 GCM 系列与 GRM 系列电压码基本相同）
   const voltMap = {
     '0G': 4, '0L': 2.5, '0J': 6.3,
     '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1K': 80,
@@ -643,7 +626,7 @@ function parseMurataGcm(s) {
   if (cap === null) return null;
 
   return {
-    series: 'A',
+    series,
     cap,
     dev: devLetterToNorm(devLetter),
     size,
@@ -653,57 +636,13 @@ function parseMurataGcm(s) {
   };
 }
 
-// 村田 Murata GRT 系列车载信息娱乐/舒适设备 MLCC 解析
-// 格式与 GCM 一致：GRT + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
-// 示例：GRT155C1H221JA16D  → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
-//       GRT155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
-// 尺寸/介质/电压码映射与 GCM 相同，对应微容 T 系列
+function parseMurataGcm(s) {
+  return parseMurataCommon(s, 'GCM', 'A');
+}
+
+// 村田 Murata GRT 系列车载信息娱乐/舒适设备 MLCC 解析（逻辑与 GCM 相同，对应微容 T 系列）
 function parseMurataGrt(s) {
-  const m = s.match(/^GRT(\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$/);
-  if (!m) return null;
-
-  const sizeCode2 = m[1];    // 2位尺寸码
-  const mediumCode = m[3];   // 2位温度特性码
-  const voltCode = m[4];     // 2位电压码
-  const capCode = m[5];      // 容量 EIA 码
-  const devLetter = m[6];    // 偏差字母
-
-  // 尺寸码映射（与 GCM/GRM 系列相同）
-  const sizeMap = {
-    '03': '0201', '15': '0402', '18': '0603', '21': '0805',
-    '31': '1206', '32': '1210', '42': '1808', '43': '1812', '55': '2220'
-  };
-  const size = sizeMap[sizeCode2];
-  if (!size) return null;
-
-  // 温度特性码映射（与 GCM 系列相同）
-  const mediumMap = {
-    '5C': 'C0G', '5G': 'X8G',
-    'R6': 'X5R', 'R7': 'X7R', 'R9': 'X8R',
-    'C7': 'X7S', 'D7': 'X7T',
-    'L8': 'X8L', 'M8': 'X8M', 'N8': 'X8N'
-  };
-
-  // 电压码映射（与 GCM 系列相同）
-  const voltMap = {
-    '0G': 4, '0L': 2.5, '0J': 6.3,
-    '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1K': 80,
-    '2A': 100, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
-    '3A': 1000, '3D': 2000
-  };
-
-  const cap = eiaCodeToPf(capCode);
-  if (cap === null) return null;
-
-  return {
-    series: 'T',
-    cap,
-    dev: devLetterToNorm(devLetter),
-    size,
-    temp: mediumMap[mediumCode] || '',
-    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
-    raw: s
-  };
+  return parseMurataCommon(s, 'GRT', 'T');
 }
 
 // 村田 Murata GCJ 系列高频低阻抗 MLCC 解析

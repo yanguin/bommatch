@@ -624,12 +624,11 @@ new Vue({
       }
     },
 
-    // 仅根据型号查询（忽略其他筛选项）
-    async parseAndQuery() {
-      const text = this.filterForm.productName;
-      if (!text || text.trim() === '') {
-        this.$message.warning('请先输入产品型号');
-        return;
+    // 筛选共享逻辑：加载产品 → 调用 IPC → 处理结果
+    async _invokeFilter(filterFormPayload, productNameOnly) {
+      if (!this.products) {
+        const loaded = await this.loadProducts();
+        if (!loaded) return;
       }
 
       this.filtering = true;
@@ -637,18 +636,10 @@ new Vue({
       this.loadingText = '正在筛选产品...';
 
       try {
-        if (!this.products) {
-          const loaded = await this.loadProducts();
-          if (!loaded) return;
-        }
-
-        // 只根据 productName 进行筛选，忽略其他筛选项
         const result = await ipcRenderer.invoke('filter-products', {
           products: this.products,
-          filterForm: {
-            productName: this.filterForm.productName
-          },
-          productNameOnly: true  // 标记只根据型号匹配
+          filterForm: filterFormPayload,
+          productNameOnly: productNameOnly || false
         });
 
         if (result.error) {
@@ -680,50 +671,19 @@ new Vue({
       }
     },
 
+    // 仅根据型号查询（忽略其他筛选项）
+    async parseAndQuery() {
+      const text = this.filterForm.productName;
+      if (!text || text.trim() === '') {
+        this.$message.warning('请先输入产品型号');
+        return;
+      }
+      await this._invokeFilter({ productName: this.filterForm.productName }, true);
+    },
+
     // 执行型号筛选
     async runFilter() {
-      if (!this.products) {
-        const loaded = await this.loadProducts();
-        if (!loaded) return;
-      }
-
-      this.filtering = true;
-      this.loading = true;
-      this.loadingText = '正在筛选产品...';
-
-      try {
-        const result = await ipcRenderer.invoke('filter-products', {
-          products: this.products,
-          filterForm: this.filterForm
-        });
-
-        if (result.error) {
-          this.$message.warning(result.error);
-          return;
-        }
-
-        // 冻结每条结果的 specs，避免 Vue 深度响应式化
-        this.filterResult = result.data.map(item => ({
-          ...item,
-          specs: Object.freeze(item.specs || [])
-        }));
-
-        // 显示筛选结果
-        if (result.maxReached) {
-          this.$message.warning(`筛选结果已达最大显示数量 (2000条)，建议添加更多筛选条件以缩小范围`);
-        } else {
-          this.$message.success(`筛选完成，共找到 ${result.data.length} 个产品`);
-        }
-
-        this.$nextTick(() => {
-          this.calcTableHeight();
-        });
-      } catch (err) {
-        this.$message.error('筛选失败: ' + err.message);
-      } finally {
-        this.filtering = false;
-        this.loading = false;
-      }
+      await this._invokeFilter(this.filterForm);
     },
 
     resetFilter() {

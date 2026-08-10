@@ -128,24 +128,23 @@ ipcMain.handle('save-file', async (event, defaultName) => {
   return result.filePath;
 });
 
+// 加载 JSON 产品数据（复用：viiyong / 强茂）
+function loadJsonData(relativePath, notFoundMsg) {
+  const jsonPath = path.join(__dirname, relativePath);
+  if (!fs.existsSync(jsonPath)) {
+    return { error: notFoundMsg };
+  }
+  return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+}
+
 // 加载viiyong产品数据
 ipcMain.handle('load-products', async (event) => {
-  const jsonPath = path.join(__dirname, 'data/viiyong_products_full.json');
-  if (!fs.existsSync(jsonPath)) {
-    return { error: '产品数据文件不存在' };
-  }
-  const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-  return data;
+  return loadJsonData('data/viiyong_products_full.json', '产品数据文件不存在');
 });
 
 // 加载强茂产品数据
 ipcMain.handle('load-qm-products', async (event) => {
-  const jsonPath = path.join(__dirname, 'data/qiangmao_products.json');
-  if (!fs.existsSync(jsonPath)) {
-    return { error: '强茂产品数据文件不存在' };
-  }
-  const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-  return data;
+  return loadJsonData('data/qiangmao_products.json', '强茂产品数据文件不存在');
 });
 
 // 执行匹配
