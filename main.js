@@ -77,6 +77,10 @@ app.whenReady().then(async () => {
 
   // 版本通过，正常启动（传入远程返回的使用时长）
   startApp(result.duration);
+}).catch((err) => {
+  console.error('应用启动失败:', err);
+  dialog.showErrorBox('启动失败', `应用启动过程中发生错误: ${err && err.message ? err.message : err}`);
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
@@ -134,7 +138,11 @@ function loadJsonData(relativePath, notFoundMsg) {
   if (!fs.existsSync(jsonPath)) {
     return { error: notFoundMsg };
   }
-  return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  } catch (err) {
+    return { error: `产品数据解析失败: ${err.message}` };
+  }
 }
 
 // 加载viiyong产品数据

@@ -225,9 +225,13 @@ new Vue({
 
     // 选择BOM文件
     async selectBomFile() {
-      const paths = await ipcRenderer.invoke('select-file');
-      if (paths && paths.length > 0) {
-        this.bomPath = paths[0];
+      try {
+        const paths = await ipcRenderer.invoke('select-file');
+        if (paths && paths.length > 0) {
+          this.bomPath = paths[0];
+        }
+      } catch (err) {
+        this.$message.error('选择BOM文件失败: ' + err.message);
       }
     },
 
@@ -1016,14 +1020,22 @@ new Vue({
 
     // 窗口置顶切换
     async togglePin() {
-      const result = await ipcRenderer.invoke('toggle-pin-window');
-      this.isPinned = result.pinned;
+      try {
+        const result = await ipcRenderer.invoke('toggle-pin-window');
+        this.isPinned = result.pinned;
+      } catch (err) {
+        this.$message.error('切换置顶失败: ' + err.message);
+      }
     },
 
     // 获取当前置顶状态
     async getPinStatus() {
-      const result = await ipcRenderer.invoke('get-pin-status');
-      this.isPinned = result.pinned;
+      try {
+        const result = await ipcRenderer.invoke('get-pin-status');
+        this.isPinned = result.pinned;
+      } catch (err) {
+        this.$message.error('获取置顶状态失败: ' + err.message);
+      }
     }
   },
 

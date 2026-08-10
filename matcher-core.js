@@ -1417,6 +1417,8 @@ function capMatchWithinTolerance(cap1, cap2, tolerance = 0.05) {
   if (cap1 === null || cap2 === null) return false;
   const diff = Math.abs(cap1 - cap2);
   const avg = (cap1 + cap2) / 2;
+  // 容量均为 0 时视为相等，避免除零
+  if (avg === 0) return diff === 0;
   return diff / avg <= tolerance;
 }
 
@@ -1636,7 +1638,12 @@ function runMatch(bomPath, products, options = {}) {
   console.log(`产品总数 ${total}, 索引键数 ${index.size}`);
 
   console.log('读取 BOM 表...');
-  const wb = XLSX.readFile(bomPath);
+  let wb;
+  try {
+    wb = XLSX.readFile(bomPath);
+  } catch (err) {
+    return { error: `读取 BOM 文件失败: ${err.message}` };
+  }
   const sheetNames = wb.SheetNames;
   console.log(`Excel 共 ${sheetNames.length} 个 sheet: ${sheetNames.join(', ')}`);
 
