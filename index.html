@@ -726,6 +726,94 @@
       color: var(--color-text-secondary);
     }
 
+    /* 命名规则悬浮按钮 */
+    .naming-rules-fab {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 117, 222, 0.3);
+      z-index: 1000;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .naming-rules-fab:hover {
+      background: var(--color-accent-active);
+      transform: scale(1.05);
+    }
+
+    .naming-rules-fab i {
+      font-size: 22px;
+    }
+
+    /* 命名规则弹窗 */
+    .naming-rules-popup {
+      position: fixed;
+      right: 84px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 360px;
+      max-height: 70vh;
+      background: var(--color-background);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-md);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      z-index: 1001;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .naming-rules-popup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      flex-shrink: 0;
+      cursor: move;
+      user-select: none;
+    }
+
+    .naming-rules-popup-close {
+      cursor: pointer;
+      font-size: 18px;
+      color: var(--color-text-tertiary);
+      transition: color 0.2s;
+    }
+
+    .naming-rules-popup-close:hover {
+      color: var(--color-text-primary);
+    }
+
+    .naming-rules-popup-body {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .naming-rules-popup-body img {
+      display: block;
+      width: 100%;
+      min-width: 100%;
+      margin-bottom: 12px;
+    }
+
+    .naming-rules-popup-body img:last-child {
+      margin-bottom: 0;
+    }
+
     /* Element UI 覆盖 - 滚动条 */
     ::-webkit-scrollbar {
       width: 8px;
@@ -1398,6 +1486,30 @@
             </el-table-column>
           </el-table>
         </div>
+      </div>
+    </div>
+
+    <!-- 命名规则悬浮按钮 -->
+    <el-tooltip content="命名规则" placement="left">
+      <div class="naming-rules-fab" @click="namingRulesVisible = !namingRulesVisible">
+        <i class="el-icon-question"></i>
+      </div>
+    </el-tooltip>
+
+    <!-- 命名规则弹窗 -->
+    <div v-if="namingRulesVisible" class="naming-rules-popup" :style="namingRulesPos ? { left: namingRulesPos.x + 'px', top: namingRulesPos.y + 'px', right: 'auto', transform: 'none' } : null">
+      <div class="naming-rules-popup-header" @mousedown="startDragNamingRules">
+        <span>命名规则</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 12px; font-weight: 400; color: var(--color-text-tertiary);">Ctrl+滚轮缩放 {{ Math.round(namingRulesZoom * 100) }}%</span>
+          <i class="el-icon-refresh-left naming-rules-popup-close" style="font-size: 16px;" @click="namingRulesZoom = 1" title="重置缩放"></i>
+          <i class="el-icon-close naming-rules-popup-close" @click="namingRulesVisible = false"></i>
+        </div>
+      </div>
+      <div class="naming-rules-popup-body" @wheel="handleNamingRulesWheel">
+        <img src="data/1.png" :style="{ width: (100 * namingRulesZoom) + '%' }" alt="命名规则 1">
+        <img src="data/2.png" :style="{ width: (100 * namingRulesZoom) + '%' }" alt="命名规则 2">
+        <img src="data/3.png" :style="{ width: (100 * namingRulesZoom) + '%' }" alt="命名规则 3">
       </div>
     </div>
   </div>

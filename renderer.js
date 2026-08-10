@@ -76,7 +76,12 @@ new Vue({
       // 强茂筛选结果
       qmFilterResult: null,
       qmSearchText: '',
-      qmFiltering: false
+      qmFiltering: false,
+
+      // 命名规则悬浮窗
+      namingRulesVisible: false,
+      namingRulesZoom: 1,
+      namingRulesPos: null
     };
   },
 
@@ -150,6 +155,43 @@ new Vue({
   },
 
   methods: {
+    // 命名规则悬浮窗：Ctrl+滚轮缩放
+    handleNamingRulesWheel(e) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      let next = Math.round((this.namingRulesZoom + delta) * 100) / 100;
+      if (next < 0.5) next = 0.5;
+      if (next > 3) next = 3;
+      this.namingRulesZoom = next;
+    },
+
+    // 命名规则悬浮窗：标题栏拖动
+    startDragNamingRules(e) {
+      // 点击关闭/重置按钮时不触发拖动
+      if (e.target.closest('.naming-rules-popup-close')) return;
+      e.preventDefault();
+      const popup = document.querySelector('.naming-rules-popup');
+      if (!popup) return;
+      const rect = popup.getBoundingClientRect();
+      const offsetX = e.clientX - rect.left;
+      const offsetY = e.clientY - rect.top;
+      // 首次拖动时，从当前实际位置开始
+      this.namingRulesPos = { x: rect.left, y: rect.top };
+      const onMove = (ev) => {
+        this.namingRulesPos = {
+          x: ev.clientX - offsetX,
+          y: ev.clientY - offsetY
+        };
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    },
+
     // 切换模式
     switchMode(mode) {
       this.activeMode = mode;
