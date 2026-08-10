@@ -374,6 +374,20 @@
       margin-bottom: 8px;
     }
 
+    /* 产品特点开关组 */
+    .feature-switch-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .feature-switch-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: var(--font-size-label);
+      color: var(--color-text-primary);
+    }
+
     /* Checkbox Group 布局 */
     .filter-checkbox-group-2cols {
       display: grid;
@@ -1028,7 +1042,7 @@
               • 京瓷：<code style="color:#e96900;">CM03X5R225M06AT</code>（CM/CT/CU/AR 开头）<br>
               • 风华：<code style="color:#e96900;">0603B101K500NT</code>（4位数字+B/CG/X）<br>
               • 火炬：<code style="color:#e96900;">FCC1206X226K250HT</code> / <code style="color:#e96900;">HGC0805R5476M100NSLJ</code><br>
-              • 村田：<code style="color:#e96900;">GRM32EC72A106KE05L</code>（GRM 通用型）/ <code style="color:#e96900;">GCM155R71H104KE02D</code>（GCM 车规级）<br>
+              • 村田：<code style="color:#e96900;">GRM32EC72A106KE05L</code>（GRM 通用型）/ <code style="color:#e96900;">GCM155R71H104KE02D</code>（GCM 车规级，对应 A 系列）/ <code style="color:#e96900;">GRT155R71H104KE02D</code>（GRT 车载舒适，对应 T 系列）<br>
               • TDK：<code style="color:#e96900;">CGA3E3X7R1H474KT000N</code>（CGA 车规级）/ <code style="color:#e96900;">CNA6P1X7R1H106KT000A</code>（CNA 软端子车规级）<br>
               • 太阳诱电：<code style="color:#e96900;">MCJCH32MLC7475KPDDT1</code>（M+分类+类型开头）<br>
               • 规格描述：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code> -->
@@ -1117,6 +1131,25 @@
             <div class="filter-input-group">
               <el-input v-model="filterForm.voltageValue" placeholder="输入数值" size="small"></el-input>
               <div class="unit-box">Vdc</div>
+            </div>
+          </div>
+
+          <!-- 产品特点开关 -->
+          <div class="filter-section">
+            <div class="filter-section-title">产品特点</div>
+            <div class="feature-switch-group">
+              <div class="feature-switch-item">
+                <span>射频</span>
+                <el-switch v-model="filterForm.rf" active-color="var(--color-accent)" inactive-color="var(--color-border)"></el-switch>
+              </div>
+              <div class="feature-switch-item">
+                <span>高功率</span>
+                <el-switch v-model="filterForm.highPower" active-color="var(--color-accent)" inactive-color="var(--color-border)"></el-switch>
+              </div>
+              <div class="feature-switch-item">
+                <span>软端子</span>
+                <el-switch v-model="filterForm.softTerminal" active-color="var(--color-accent)" inactive-color="var(--color-border)"></el-switch>
+              </div>
             </div>
           </div>
 
@@ -1401,14 +1434,17 @@
             style="flex: 1;"
             :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
             <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
-            <el-table-column prop="productName" label="产品型号" min-width="180">
+            <el-table-column prop="productName" label="产品型号" min-width="190">
               <template slot-scope="scope">
                 <span style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="series" label="系列" width="80" align="center">
+            <el-table-column prop="features" label="产品特点" min-width="260">
               <template slot-scope="scope">
-                <el-tag :type="getSeriesTagType(scope.row.series)" size="mini">{{ getSeriesLabel(scope.row.series) }}</el-tag>
+                <span v-if="!scope.row.series && !scope.row.features" style="color: var(--color-text-tertiary);">-</span>
+                <div v-else style="display: flex; flex-wrap: wrap; gap: 4px;">
+                  <el-tag v-for="(tag, idx) in getFeatureTags(scope.row)" :key="idx" :type="tag.type" size="mini">{{ tag.label }}</el-tag>
+                </div>
               </template>
             </el-table-column>
             <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>

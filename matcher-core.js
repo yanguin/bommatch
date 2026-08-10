@@ -18,7 +18,8 @@ function capToPf(s) {
 
 function voltToNum(s) {
   if (s === undefined || s === null || s === '') return null;
-  const str = String(s).trim();
+  // 去除 "DC" 前缀（如 DC 100V / DC16V）
+  const str = String(s).trim().replace(/^DC\s*/i, '');
   let m = str.match(/^(\d+(?:\.\d+)?)\s*([kK])[vV]$/);
   if (m) return Math.round(parseFloat(m[1]) * 1000 * 1000) / 1000;
   m = str.match(/^(\d+(?:\.\d+)?)\s*[vV]$/);
@@ -131,7 +132,7 @@ function devLetterToNorm(letter) {
 // 字段模式识别
 const RE_CAP = /^[0-9.]+\s*(pF|nF|uF|µF|mF|p|n|u|µ)$/i;
 const RE_DEV = /^(±|\+\/-)?\s*\d+(?:\.\d+)?(?:%|pF)$/i;
-const RE_VOLT = /^\d+(?:\.\d+)?\s*[kK]?[vV]$/;
+const RE_VOLT = /^(DC\s*)?\d+(?:\.\d+)?\s*[kK]?[vV]$/i;
 const RE_TEMP = /^(C0G|COG|NPO|NP0|[CXYZ]\d[A-Z])\b/i;
 const RE_SIZE = /^(SMD|SM)?\s*\d{4,6}(?![0-9])/i;
 
@@ -278,9 +279,9 @@ function parseProductName(name) {
 // ---------- 解析其他品牌 MLCC 贴片电容型号 ----------
 // 支持：国巨 YAGEO(CC/AC)、三星 Samsung(CL)、信昌 PDC(FK/FM/MA)、太阳诱电 Taiyo(M+分类+类型)、
 //       禾伸堂 HolyStone(C+数字)、京瓷 Kyocera(CM/CT/CU/AR)、火炬 Torch(FCC/HGC)、
-//       村田 Murata(GRM/GCM)、TDK(CGA/CNA)、风华 FH
+//       村田 Murata(GRM/GCM/GRT)、TDK(CGA/CNA)、风华 FH
 // 返回格式与 parseProductName 对齐：{ series, cap, dev, size, temp, volt, raw }
-// series 始终为 null（其他品牌无微容 A/T/B/V 系列）
+// series 通常为 null；村田 GCM 映射微容 A 系列、GRT 映射 T 系列，其余品牌无对应关系
 function parseOtherBrandMlcc(name) {
   if (!name) return null;
   const s = String(name).trim().toUpperCase();
@@ -312,8 +313,11 @@ function parseOtherBrandMlcc(name) {
   // 村田 Murata：GRM 开头（通用型）
   if (s.startsWith('GRM')) return parseMurata(s);
 
-  // 村田 Murata：GCM 开头（车规级）
+  // 村田 Murata：GCM 开头（车规级，对应微容 A 系列）
   if (s.startsWith('GCM')) return parseMurataGcm(s);
+
+  // 村田 Murata：GRT 开头（车载信息娱乐/舒适设备，对应微容 T 系列）
+  if (s.startsWith('GRT')) return parseMurataGrt(s);
 
   // 村田 Murata：GCJ 开头（高频低阻抗型）
   if (s.startsWith('GCJ')) return parseMurataGcj(s);
@@ -639,7 +643,60 @@ function parseMurataGcm(s) {
   if (cap === null) return null;
 
   return {
-    series: null,
+    series: 'A',
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp: mediumMap[mediumCode] || '',
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    raw: s
+  };
+}
+
+// 村田 Murata GRT 系列车载信息娱乐/舒适设备 MLCC 解析
+// 格式与 GCM 一致：GRT + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
+// 示例：GRT155C1H221JA16D  → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
+//       GRT155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
+// 尺寸/介质/电压码映射与 GCM 相同，对应微容 T 系列
+function parseMurataGrt(s) {
+  const m = s.match(/^GRT(\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$/);
+  if (!m) return null;
+
+  const sizeCode2 = m[1];    // 2位尺寸码
+  const mediumCode = m[3];   // 2位温度特性码
+  const voltCode = m[4];     // 2位电压码
+  const capCode = m[5];      // 容量 EIA 码
+  const devLetter = m[6];    // 偏差字母
+
+  // 尺寸码映射（与 GCM/GRM 系列相同）
+  const sizeMap = {
+    '03': '0201', '15': '0402', '18': '0603', '21': '0805',
+    '31': '1206', '32': '1210', '42': '1808', '43': '1812', '55': '2220'
+  };
+  const size = sizeMap[sizeCode2];
+  if (!size) return null;
+
+  // 温度特性码映射（与 GCM 系列相同）
+  const mediumMap = {
+    '5C': 'C0G', '5G': 'X8G',
+    'R6': 'X5R', 'R7': 'X7R', 'R9': 'X8R',
+    'C7': 'X7S', 'D7': 'X7T',
+    'L8': 'X8L', 'M8': 'X8M', 'N8': 'X8N'
+  };
+
+  // 电压码映射（与 GCM 系列相同）
+  const voltMap = {
+    '0G': 4, '0L': 2.5, '0J': 6.3,
+    '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1K': 80,
+    '2A': 100, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
+    '3A': 1000, '3D': 2000
+  };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: 'T',
     cap,
     dev: devLetterToNorm(devLetter),
     size,
@@ -1111,8 +1168,8 @@ function parseDesc(desc) {
         remaining = remaining.replace(/\b[A-Z]{2,}[0-9A-Z]{4,}\b/g, ' ');
         // 移除纯大写+数字型号如 CNA6P1X7R1H106KT000A
         remaining = remaining.replace(/\b[A-Z]{3,}\d[A-Z0-9]+\b/g, ' ');
-        // 移除 CGA/GRM/GCM/CL/CC/AC/FK/FM 开头的型号
-        remaining = remaining.replace(/\b(CGA|GRM|GCM|CL|CC|AC|FK|FM|FS|FR|C0|C1|C2)\d[A-Z0-9]+\b/g, ' ');
+        // 移除 CGA/GRM/GCM/GRT/CL/CC/AC/FK/FM 开头的型号
+        remaining = remaining.replace(/\b(CGA|GRM|GCM|GRT|CL|CC|AC|FK|FM|FS|FR|C0|C1|C2)\d[A-Z0-9]+\b/g, ' ');
         // 移除剩余的独立型号片段（如 0805X106K250NT，1210B475K101CT）
         remaining = remaining.replace(/\b\d{4}[A-Z]\d{3}[A-Z]\d{3}[A-Z]*\b/g, ' ');
         remaining = remaining.replace(/\b\d{4}[A-Z]\d{3}[A-Z]+\b/g, ' ');
@@ -1282,7 +1339,16 @@ function parseDesc(desc) {
     if (size === null && RE_SIZE.test(p)) { size = sizeInch(p); continue; }
   }
   if (cap === null || volt === null || temp === null || size === null) return null;
-  return { cap, dev: dev || '', volt, temp, size, raw: desc };
+
+  // 扫描型号段，提取微容系列映射（如村田 GCM→A、GRT→T），使匹配按对应系列过滤
+  let series = null;
+  for (const p of parts) {
+    if (!/\d/.test(p)) continue;  // 型号必含数字，跳过纯文本段
+    const mlcc = parseOtherBrandMlcc(p);
+    if (mlcc && mlcc.series) { series = mlcc.series; break; }
+  }
+
+  return { cap, dev: dev || '', volt, temp, size, series, raw: desc };
 }
 
 // ---------- 宽松解析（用于型号筛选场景） ----------
@@ -1434,6 +1500,11 @@ function matchSpec(spec, index, options = {}) {
     }
   }
 
+  // 按系列过滤：spec.series 有值时（村田 GCM→微容 A 系列、GRT→T 系列）只匹配同系列产品
+  if (cands && cands.length > 0 && spec.series) {
+    cands = cands.filter((c) => c.series === spec.series);
+  }
+
   if (cands && cands.length > 0) {
     // 偏差完全一致
     const exact = cands.filter((c) => c.dev === spec.dev);
@@ -1471,7 +1542,10 @@ function matchSpec(spec, index, options = {}) {
 
     // 检查容量是否在容差范围内
     if (capMatchWithinTolerance(cap, spec.cap, fuzzyTolerance)) {
-      fuzzyResults.push(...items);
+      for (const c of items) {
+        if (spec.series && c.series !== spec.series) continue;
+        fuzzyResults.push(c);
+      }
     }
   }
 

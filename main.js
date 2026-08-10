@@ -211,6 +211,21 @@ ipcMain.handle('export-excel', async (event, { outputPath, data, headers, letter
 
 // ========== 型号筛选 IPC 处理 ==========
 
+// 清洗 features 字段的 HTML，提取纯文本并用顿号分隔
+function cleanFeatures(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<\/span>/gi, '、')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[、\s]+/g, '、')
+    .replace(/^、|、$/g, '')
+    .trim();
+}
+
 // 执行型号筛选
 ipcMain.handle('filter-products', async (event, { products, filterForm, productNameOnly }) => {
   try {
@@ -237,6 +252,7 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
           result.push({
             productName: item.productName || '',
             series: item.productName ? item.productName[0].toUpperCase() : '',
+            features: cleanFeatures(item.features),
             size: item.size || '',
             tempCharacteristics: item.tempCharacteristics || '',
             capacity: item.capacity || '',
@@ -259,7 +275,10 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
       (filterForm.temps && filterForm.temps.length > 0) ||
       filterForm.capacityValue ||
       (filterForm.deviations && filterForm.deviations.length > 0) ||
-      filterForm.voltageValue;
+      filterForm.voltageValue ||
+      filterForm.rf ||
+      filterForm.highPower ||
+      filterForm.softTerminal;
 
     if (!hasCondition) {
       const totalCount = products.total || (products.list ? products.list.length : 0);
@@ -380,10 +399,19 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
         if (isNaN(itemVolt) || Math.abs(itemVolt - targetVolt) > 0.001) continue;
       }
 
-      // 添加系列字段 + specs
+      // 产品特点过滤（射频/高功率/软端子）
+      if (filterForm.rf || filterForm.highPower || filterForm.softTerminal) {
+        const feats = cleanFeatures(item.features);
+        if (filterForm.rf && !feats.includes('射频')) continue;
+        if (filterForm.highPower && !feats.includes('高功率')) continue;
+        if (filterForm.softTerminal && !feats.includes('软端子')) continue;
+      }
+
+      // 添加系列字段 + 产品特点 + specs
       result.push({
         productName: item.productName || '',
         series: item.productName ? item.productName[0].toUpperCase() : '',
+        features: cleanFeatures(item.features),
         size: item.size || '',
         tempCharacteristics: item.tempCharacteristics || '',
         capacity: item.capacity || '',
@@ -413,12 +441,12 @@ ipcMain.handle('export-filter-excel', async (event, { outputPath, data, customHe
       }
     } else {
       // 微容默认格式
-      headers = ['产品型号', '系列', '尺寸(Inch/mm)', '温度特性', '标称容量', '容量偏差', '额定电压(Vdc)'];
+      headers = ['产品型号', '产品特点', '尺寸(Inch/mm)', '温度特性', '标称容量', '容量偏差', '额定电压(Vdc)'];
       aoa = [headers];
       for (const item of data) {
         aoa.push([
           item.productName || '',
-          item.series || '',
+          item.features || '',
           item.size || '',
           item.tempCharacteristics || '',
           item.capacity || '',

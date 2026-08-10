@@ -48,7 +48,10 @@ new Vue({
         capacityValue: '',
         capacityUnit: 'pF',
         deviations: [],
-        voltageValue: ''
+        voltageValue: '',
+        rf: false,
+        highPower: false,
+        softTerminal: false
       },
 
       // 型号筛选结果
@@ -732,7 +735,10 @@ new Vue({
         capacityValue: '',
         capacityUnit: 'pF',
         deviations: [],
-        voltageValue: ''
+        voltageValue: '',
+        rf: false,
+        highPower: false,
+        softTerminal: false
       };
       this.filterResult = null;
       this.filterSearchText = '';
@@ -803,6 +809,25 @@ new Vue({
         'V': 'V系列'
       };
       return labelMap[letter] || letter;
+    },
+
+    // 获取产品特点标签列表（系列 + 特点，去重）
+    getFeatureTags(row) {
+      const tags = [];
+      // 系列标签（带系列配色）
+      const seriesLabel = row.series ? this.getSeriesLabel(row.series) : '';
+      if (seriesLabel) {
+        tags.push({ label: seriesLabel, type: this.getSeriesTagType(row.series) });
+      }
+      // 特点标签（顿号分隔，跳过与系列重复的）
+      if (row.features) {
+        const parts = row.features.split('、').map(s => s.trim()).filter(s => s);
+        for (const p of parts) {
+          if (seriesLabel && p === seriesLabel) continue;
+          tags.push({ label: p, type: 'info' });
+        }
+      }
+      return tags;
     },
 
     // ============ 品牌切换 ============
