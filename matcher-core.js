@@ -96,10 +96,12 @@ function eiaCodeToVolt(code) {
 
 // 公差字母码转标准偏差格式
 // J=±5%, K=±10%, M=±20% 等
+// W=±0.05pF（村田 GJM 高频系列小容量精密容差码）
 function devLetterToNorm(letter) {
   if (!letter) return '';
   const c = String(letter).trim().toUpperCase();
   const map = {
+    W: '±0.05pF',
     B: '±0.1pF',
     C: '±0.25pF',
     D: '±0.5pF',
@@ -306,6 +308,9 @@ function parseOtherBrandMlcc(name) {
 
   // 村田 Murata：GCJ 开头（高频低阻抗型）
   if (s.startsWith('GCJ')) return parseMurataGcj(s);
+
+  // 村田 Murata：GJM 开头（高频高 Q 型，RF 应用，无对应微容系列）
+  if (s.startsWith('GJM')) return parseMurataCommon(s, 'GJM', null);
 
   // 风华 FH：4位数字开头 + 介质字母(B/CG/X)
   // 需在村田/国巨/火炬/TDK 之后判断，避免误匹配
@@ -585,11 +590,12 @@ function parseTdk(s) {
   };
 }
 
-// 村田 Murata GCM/GRT 系列车规级 MLCC 解析（共享逻辑）
-// 格式：GCM/GRT + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
+// 村田 Murata GCM/GRT/GJM 系列 MLCC 解析（共享逻辑）
+// 格式：前缀 + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
 // 示例：GCM155C1H221JA16D  → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
 //       GRT155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
-// GCM 对应微容 A 系列（车载动力总成/安全），GRT 对应 T 系列（车载信息娱乐/舒适）
+//       GJM1555C1H200FB01D  → 尺寸0402(15), C0G(5C), 50V(1H), 20pF(200), ±1%(F)
+// GCM 对应微容 A 系列（车载动力总成/安全），GRT 对应 T 系列（车载信息娱乐/舒适），GJM 无对应系列
 function parseMurataCommon(s, prefix, series) {
   const re = new RegExp('^' + prefix + '(\\d{2})([A-Z0-9])([A-Z0-9]{2})([A-Z0-9]{2})([\\dR]{3})([A-Z])([A-Z0-9]{3})([A-Z])$');
   const m = s.match(re);
