@@ -111,6 +111,7 @@ function httpGet(url, callback) {
     }
   };
 
+  let done = false; // 防止超时 destroy 触发的 error 事件导致 callback 二次调用
   const req = https.get(url, options, (res) => {
     // 处理 3xx 重定向
     if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -121,18 +122,27 @@ function httpGet(url, callback) {
     let data = '';
     res.on('data', chunk => { data += chunk; });
     res.on('end', () => {
-      callback(null, data, res.statusCode);
+      if (!done) {
+        done = true;
+        callback(null, data, res.statusCode);
+      }
     });
   });
 
   req.on('error', (err) => {
-    callback(err, null, null);
+    if (!done) {
+      done = true;
+      callback(err, null, null);
+    }
   });
 
   // 10秒超时
   req.setTimeout(10000, () => {
     req.destroy();
-    callback(new Error('timeout'), null, null);
+    if (!done) {
+      done = true;
+      callback(new Error('timeout'), null, null);
+    }
   });
 }
 
