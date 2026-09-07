@@ -1088,6 +1088,41 @@ function parseDesc(desc) {
     }
   }
 
+  // ===== <尺寸>陶瓷电容/贴片电容 格式 =====
+  // 格式：<尺寸>陶瓷电容 <容量>±<偏差> <电压> <介质>
+  // 例如：0402陶瓷电容 2pF±0.25pF 50V C0G
+  //       0402陶瓷电容 4.7nF±10% 50V X7R
+  //       0402陶瓷电容 20pF±1% 50V C0G
+  //       0603贴片电容 100nF ±10% 16V X5R
+  if (/^\d{4}\s*(?:陶瓷|贴片)?电容/i.test(text)) {
+    const sizeM = text.match(/^(\d{4})\s*(?:陶瓷|贴片)?电容/i);
+    const size = sizeInch(sizeM[1]);
+    let remaining = text.substring(sizeM[0].length).trim();
+
+    // 提取容量和偏差（可能连在一起如 2pF±0.25pF，也可能分开）
+    const capDevMatch = remaining.match(/^([0-9.]+\s*(?:pF|nF|uF|µF|mF|p|n|u|µ))\s*(±\s*\d+(?:\.\d+)?(?:%|pF))?/i);
+    if (capDevMatch) {
+      const cap = capToPf(capDevMatch[1]);
+      let dev = capDevMatch[2] ? normDev(capDevMatch[2]) : '';
+      remaining = remaining.substring(capDevMatch[0].length).trim();
+
+      if (cap !== null) {
+        let volt = null, temp = '';
+        const parts = remaining.split(/[\s,]+/).map(s => s.trim()).filter(s => s);
+
+        for (const part of parts) {
+          if (volt === null && RE_VOLT.test(part)) { volt = voltToNum(part); continue; }
+          if (!temp && RE_TEMP.test(part)) { temp = tempCode(part); continue; }
+          if (!dev && RE_DEV.test(part)) { dev = normDev(part); continue; }
+        }
+
+        if (volt !== null && size) {
+          return { cap, dev: dev || '', volt, temp: temp || '', size, raw: desc };
+        }
+      }
+    }
+  }
+
   // ===== 空格分隔的混合规格描述格式 =====
   // 格式：容量(带单位) [电压] [偏差] [尺寸] [介质] [品牌名] [型号] [(ROHS)]
   // 字段顺序不固定，通过模式识别各字段；品牌名/型号/ROHS等非规格字段自动跳过

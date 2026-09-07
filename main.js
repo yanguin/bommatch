@@ -434,6 +434,206 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
   }
 });
 
+// 多型号顺序查询：一次建索引，按输入顺序返回结果
+// 支持两类输入：产品型号（精确/模糊匹配）与规格描述（如 CCAP,560pF,±10%,50V,X7R,SMD0402）
+// series：匹配系列查询条件（如 ['A','T']），限定产品搜索范围；空/未传 = 匹配全部
+ipcMain.handle('filter-products-multi', async (event, { products, names, series }) => {
+  try {
+    const { parseDescLoose } = require('./matcher-core.js');
+    // 入参防御：产品数据
+    if (!products || !products.list) {
+      return { error: '产品数据未加载' };
+    }
+    // 入参防御：names 数组
+    if (!Array.isArray(names) || names.length === 0) {
+      return { error: '请输入产品型号' };
+    }
+    // 元素校验：剔除非字符串与超长项（单条 > 100 字符）
+    const validNames = [];
+    for (const n of names) {
+      if (typeof n === 'string' && n.trim() && n.length <= 100) {
+        validNames.push(n.trim());
+      }
+    }
+    if (validNames.length === 0) {
+      return { error: '未识别到有效产品型号' };
+    }
+    // 保留重复输入（重复粘贴的型号各自成组、各自计数，与用户输入一一对应）
+    let truncated = false;
+    let finalNames = validNames;
+    if (validNames.length > 200) {
+      truncated = true;
+      finalNames = validNames.slice(0, 200);
+    }
+
+    // 系列查询条件：限定产品搜索范围（A/T/B/V），空集 = 不过滤
+    const seriesSet = new Set();
+    if (Array.isArray(series)) {
+      for (const s of series) {
+        if (typeof s === 'string' && /^[ATBV]$/.test(s)) seriesSet.add(s);
+      }
+    }
+    const list = seriesSet.size > 0
+      ? products.list.filter(item => item.productName && seriesSet.has(item.productName[0].toUpperCase()))
+      : products.list;
+
+    // 一次遍历建索引：productName(大写) → item，O(M)
+    const indexMap = new Map();
+    for (const item of list) {
+      if (item.productName && !indexMap.has(item.productName.toUpperCase())) {
+        indexMap.set(item.productName.toUpperCase(), item);
+      }
+    }
+
+    const result = [];
+    let matchedInputs = 0;
+    let unmatchedInputs = 0;
+    const maxResults = 2000; // 防御上限：规格匹配单输入可出多行，重复输入也各自计数
+    let maxReached = false;
+
+    // 按 names 顺序遍历（index = inputIndex）
+    for (let i = 0; i < finalNames.length; i++) {
+      const name = finalNames[i];
+      const nameUpper = name.toUpperCase();
+
+      // 先精确匹配
+      let hit = indexMap.get(nameUpper);
+
+      // 未中再模糊匹配（与单型号 parseAndQuery 的 includes 行为一致）
+      if (!hit) {
+        for (const item of list) {
+          if (item.productName && item.productName.toUpperCase().includes(nameUpper)) {
+            hit = item;
+            break;
+          }
+        }
+      }
+
+      if (!hit) {
+        // 未中产品型号时，尝试按规格描述匹配（以容量为锚定字段，避免型号误判）
+        // 例：CCAP,560pF,±10%,50V,X7R,SMD0402
+        const spec = parseDescLoose(name);
+        if (spec && spec.cap !== null && spec.cap !== undefined) {
+          const specHits = [];
+          for (const item of list) {
+            // 尺寸（spec.size 为 inch 码，如 0402；item.size 形如 "0402/1005M"）
+            if (spec.size) {
+              if ((item.size || '').split('/')[0].trim() !== spec.size) continue;
+            }
+            // 介质（NP0 已归一为 C0G）
+            if (spec.temp) {
+              if (!(item.tempCharacteristics || '').toUpperCase().includes(spec.temp)) continue;
+            }
+            // 标称容量
+            const capM = (item.capacity || '').match(/^([0-9.]+)\s*(pF|nF|uF|µF|mF|p|n|u|µ)$/i);
+            if (!capM) continue;
+            let itemPf = parseFloat(capM[1]);
+            const cu = capM[2].toLowerCase();
+            if (cu === 'nf' || cu === 'n') itemPf *= 1e3;
+            else if (cu === 'uf' || cu === 'µf' || cu === 'u' || cu === 'µ') itemPf *= 1e6;
+            else if (cu === 'mf') itemPf *= 1e9;
+            if (Math.abs(itemPf - spec.cap) > 0.001) continue;
+            // 额定电压
+            if (spec.volt !== null && spec.volt !== undefined) {
+              const itemVolt = parseFloat(item.voltage);
+              if (isNaN(itemVolt) || Math.abs(itemVolt - spec.volt) > 0.001) continue;
+            }
+            // 容量偏差
+            if (spec.dev) {
+              const itemDev = (item.capacityDeviation || '').replace(/\s+/g, '').replace(/\+\/-/g, '±');
+              if (itemDev !== spec.dev) continue;
+            }
+            specHits.push(item);
+          }
+
+          if (specHits.length > 0) {
+            matchedInputs++;
+            for (const item of specHits) {
+              if (result.length >= maxResults) {
+                maxReached = true;
+                continue;
+              }
+              result.push({
+                inputName: name,
+                inputIndex: i,
+                hitCount: specHits.length,
+                productName: item.productName || '',
+                series: item.productName ? item.productName[0].toUpperCase() : '',
+                features: cleanFeatures(item.features),
+                size: item.size || '',
+                tempCharacteristics: item.tempCharacteristics || '',
+                capacity: item.capacity || '',
+                capacityDeviation: item.capacityDeviation || '',
+                voltage: item.voltage || '',
+                specs: item.specs || []
+              });
+            }
+            continue;
+          }
+        }
+        // 完全未匹配：也生成占位行，保证每条输入在表格中可见（与统计口径一致）
+        unmatchedInputs++;
+        if (result.length < maxResults) {
+          result.push({
+            inputName: name,
+            inputIndex: i,
+            unmatched: true,
+            hitCount: 0,
+            productName: '',
+            series: '',
+            features: '',
+            size: '',
+            tempCharacteristics: '',
+            capacity: '',
+            capacityDeviation: '',
+            voltage: '',
+            specs: []
+          });
+        }
+        continue;
+      }
+
+      // 精确/模糊命中：每条输入都生成自己的行（不同输入命中同一产品时重复展示，便于逐行核对）
+      matchedInputs++;
+      if (result.length >= maxResults) {
+        maxReached = true;
+        continue;
+      }
+
+      result.push({
+        inputName: name,
+        inputIndex: i,
+        hitCount: 1,
+        productName: hit.productName || '',
+        series: hit.productName ? hit.productName[0].toUpperCase() : '',
+        features: cleanFeatures(hit.features),
+        size: hit.size || '',
+        tempCharacteristics: hit.tempCharacteristics || '',
+        capacity: hit.capacity || '',
+        capacityDeviation: hit.capacityDeviation || '',
+        voltage: hit.voltage || '',
+        specs: hit.specs || []
+      });
+    }
+
+    // data 按输入顺序（inputIndex 升序）自然成立：外层按 names 顺序遍历
+    return {
+      data: result,
+      stats: {
+        totalInputs: finalNames.length,
+        matchedInputs,
+        unmatchedInputs,
+        // 产品数排除"未匹配"占位行
+        productCount: result.filter(r => !r.unmatched).length
+      },
+      maxReached,
+      truncated
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 // 导出筛选结果Excel
 ipcMain.handle('export-filter-excel', async (event, { outputPath, data, customHeaders }) => {
   try {
