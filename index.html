@@ -218,10 +218,19 @@
     .el-input__inner, .el-textarea__inner {
       border: 1px solid var(--color-border) !important;
       background-color: var(--color-background) !important;
-      height: var(--height-input) !important;
-      line-height: var(--height-input) !important;
       border-radius: var(--border-radius-small) !important;
       color: var(--color-text-primary) !important;
+    }
+    /* 单行输入框：固定高度 */
+    .el-input__inner {
+      height: var(--height-input) !important;
+      line-height: var(--height-input) !important;
+    }
+    /* 多行输入框：不锁高度（交给 autosize 与手动拖拽），右下角可自行拉伸 */
+    .el-textarea__inner {
+      height: auto;
+      line-height: 1.5 !important;
+      resize: vertical !important;
     }
     .el-input__inner::placeholder, .el-textarea__inner::placeholder {
       color: var(--color-text-tertiary) !important;
@@ -841,6 +850,24 @@
       background-color: var(--color-background-secondary);
     }
 
+    /* Excel 风格：左侧固定外框序号列（不随横向滚动移动，不受斑马纹/悬停影响） */
+    .el-table .gutter-col {
+      background: var(--color-background-secondary) !important;
+      color: var(--color-text-tertiary) !important;
+      font-size: 12px;
+      padding: 0 4px !important;
+    }
+    .el-table .gutter-col:hover {
+      cursor: default;
+    }
+
+    /* Excel 式单元格选区高亮（不透明浅蓝：斑马纹灰底行/白底行/悬停行显示一致） */
+    .el-table td.cell-selected,
+    .el-table .el-table__row--striped td.cell-selected,
+    .el-table .el-table__row:hover td.cell-selected {
+      background-color: #c3dcf7 !important;
+    }
+
   </style>
 </head>
 <body>
@@ -862,6 +889,7 @@
           <el-select v-model="currentBrand" size="small" style="width: 110px;" @change="switchBrand">
             <el-option label="微容" value="weirong"></el-option>
             <el-option label="强茂" value="qiangmao"></el-option>
+            <el-option label="大毅" value="dayi"></el-option>
           </el-select>
           <span
             class="pin-btn"
@@ -1015,41 +1043,80 @@
         <div v-show="activeMode === 'filter'">
           <!-- 产品型号 -->
           <div class="filter-section">
-            <div class="filter-section-title">产品型号（支持微容/国巨/风华/火炬/村田/TDK/太阳诱电型号自动解析）</div>
-            <el-input
-              v-model="filterForm.productName"
-              placeholder="如: T106K1206X7T100N2P"
-              size="small"
-              clearable
-              @keyup.enter.native="parseAndFill">
-            </el-input>
-            <div class="filter-actions">
-              <el-button type="primary" @click="parseAndFill" style="flex: 1;">
-                解析
-              </el-button>
-              <el-button type="success" @click="parseAndQuery" style="flex: 1;">
-                查询
+            <div class="filter-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>产品型号</span>
+              <el-button size="mini" type="text" @click="toggleFilterInputMode">
+                {{ filterInputMode === 'single' ? '切换多型号' : '切换单型号' }}
               </el-button>
             </div>
-            <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
-              支持品牌型号自动解析：<br>
-              微容、国巨、三星、信昌、禾伸堂、京瓷、风华、火炬、村田、TDK、太阳诱电...
-              <!-- • 微容：<code style="color:#e96900;">T106K1206X7T100N2P</code>（A/T/B/V 开头）<br>
-              • 国巨：<code style="color:#e96900;">CC0402KRX7R0BB103</code>（CC 开头）/ <code style="color:#e96900;">AC0603KRX7R9BB104</code>（AC 汽车级）<br>
-              • 三星：<code style="color:#e96900;">CL31B106KAHVPNE</code>（CL 开头）<br>
-              • 信昌：<code style="color:#e96900;">FM21X102K251PXG</code>（FK/FM 等）/ <code style="color:#e96900;">MA0402CG-820F-100G</code>（MA 系列）<br>
-              • 禾伸堂：<code style="color:#e96900;">C1206X102K202TX</code>（C+数字开头）<br>
-              • 京瓷：<code style="color:#e96900;">CM03X5R225M06AT</code>（CM/CT/CU/AR 开头）<br>
-              • 风华：<code style="color:#e96900;">0603B101K500NT</code>（4位数字+B/CG/X）<br>
-              • 火炬：<code style="color:#e96900;">FCC1206X226K250HT</code> / <code style="color:#e96900;">HGC0805R5476M100NSLJ</code><br>
-              • 村田：<code style="color:#e96900;">GRM32EC72A106KE05L</code>（GRM 通用型）/ <code style="color:#e96900;">GCM155R71H104KE02D</code>（GCM 车规级，对应 A 系列）/ <code style="color:#e96900;">GRT155R71H104KE02D</code>（GRT 车载舒适，对应 T 系列）<br>
-              • TDK：<code style="color:#e96900;">CGA3E3X7R1H474KT000N</code>（CGA 车规级）/ <code style="color:#e96900;">CNA6P1X7R1H106KT000A</code>（CNA 软端子车规级）<br>
-              • 太阳诱电：<code style="color:#e96900;">MCJCH32MLC7475KPDDT1</code>（M+分类+类型开头）<br>
-              • 规格描述：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code> -->
-              <div style="margin-top: 4px;">输入后点"解析"自动填充各筛选项</div>
+            <!-- 单型号态（现状保留） -->
+            <div v-show="filterInputMode === 'single'">
+              <el-input
+                v-model="filterForm.productName"
+                placeholder="如: T106K1206X7T100N2P"
+                size="small"
+                clearable
+                @keyup.enter.native="parseAndFill">
+              </el-input>
+              <div class="filter-actions">
+                <el-button type="primary" @click="parseAndFill" style="flex: 1;">
+                  解析
+                </el-button>
+                <el-button type="success" @click="parseAndQuery" style="flex: 1;">
+                  查询
+                </el-button>
+              </div>
+              <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
+                支持品牌型号自动解析：<br>
+                微容、国巨、三星、信昌、禾伸堂、京瓷、风华、火炬、村田、TDK、太阳诱电...
+                <!-- • 微容：<code style="color:#e96900;">T106K1206X7T100N2P</code>（A/T/B/V 开头）<br>
+                • 国巨：<code style="color:#e96900;">CC0402KRX7R0BB103</code>（CC 开头）/ <code style="color:#e96900;">AC0603KRX7R9BB104</code>（AC 汽车级）<br>
+                • 三星：<code style="color:#e96900;">CL31B106KAHVPNE</code>（CL 开头）<br>
+                • 信昌：<code style="color:#e96900;">FM21X102K251PXG</code>（FK/FM 等）/ <code style="color:#e96900;">MA0402CG-820F-100G</code>（MA 系列）<br>
+                • 禾伸堂：<code style="color:#e96900;">C1206X102K202TX</code>（C+数字开头）<br>
+                • 京瓷：<code style="color:#e96900;">CM03X5R225M06AT</code>（CM/CT/CU/AR 开头）<br>
+                • 风华：<code style="color:#e96900;">0603B101K500NT</code>（4位数字+B/CG/X）<br>
+                • 火炬：<code style="color:#e96900;">FCC1206X226K250HT</code> / <code style="color:#e96900;">HGC0805R5476M100NSLJ</code><br>
+                • 村田：<code style="color:#e96900;">GRM32EC72A106KE05L</code>（GRM 通用型）/ <code style="color:#e96900;">GCM155R71H104KE02D</code>（GCM 车规级，对应 A 系列）/ <code style="color:#e96900;">GRT155R71H104KE02D</code>（GRT 车载舒适，对应 T 系列）<br>
+                • TDK：<code style="color:#e96900;">CGA3E3X7R1H474KT000N</code>（CGA 车规级）/ <code style="color:#e96900;">CNA6P1X7R1H106KT000A</code>（CNA 软端子车规级）<br>
+                • 太阳诱电：<code style="color:#e96900;">MCJCH32MLC7475KPDDT1</code>（M+分类+类型开头）<br>
+                • 规格描述：<code style="color:#e96900;">0402,100nF,±10%,50V,X7R</code> -->
+                <div style="margin-top: 4px;">输入后点"解析"自动填充各筛选项</div>
+              </div>
+            </div>
+            <!-- 多型号态：textarea + 匹配系列（查询条件）+ 开始匹配 -->
+            <div v-show="filterInputMode === 'multi'">
+              <el-input type="textarea" :autosize="{ minRows: 8, maxRows: 25 }" v-model="filterMultiText"
+                placeholder="T106K1206X7T100N2P&#10;B106K0603X7R100N2P&#10;V106K0805X5R100N2P"
+                size="small">
+              </el-input>
+              <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
+                每行输入一个产品型号或规格描述（如：CCAP,560pF,±10%,50V,X7R,SMD0402），
+                按输入顺序匹配，最多 200 行
+              </div>
+              <!-- 匹配系列：查询条件，点"开始匹配"时生效（勾选变化不影响已查询出的结果） -->
+              <div class="form-item" style="margin-top: 12px;">
+                <label class="form-label">匹配系列（可多选，当前已选 {{ filterMultiSeries.length }} 个）</label>
+                <el-checkbox-group v-model="filterMultiSeries" class="series-group">
+                  <el-checkbox label="A">A系列 - 车载动力总成/安全设备</el-checkbox>
+                  <el-checkbox label="T">T系列 - 车载信息娱乐/舒适设备</el-checkbox>
+                  <el-checkbox label="B">B系列 - 工业设备</el-checkbox>
+                  <el-checkbox label="V">V系列 - 通用设备</el-checkbox>
+                </el-checkbox-group>
+                <div v-if="filterMultiSeries.length === 0" style="margin-top: 8px; color: var(--color-error); font-size: 12px;">
+                  未选择任何系列，将匹配全部产品
+                </div>
+              </div>
+              <div class="filter-actions">
+                <el-button type="success" @click="runMultiFilter" :loading="filtering" style="flex: 1;">
+                  开始匹配
+                </el-button>
+              </div>
             </div>
           </div>
 
+          <!-- 下方筛选条件区：多型号态整体隐藏（v-show 保留组件状态） -->
+          <div v-show="filterInputMode === 'single'">
           <!-- 应用场景 -->
           <div class="filter-section">
             <div class="filter-section-title">应用场景（系列）</div>
@@ -1162,13 +1229,34 @@
               重置
             </el-button>
           </div>
+          </div><!-- /筛选条件区 v-show -->
 
           <!-- 筛选结果统计 -->
           <div v-if="filterResult" class="form-item" style="margin-top: 20px;">
             <div class="section-title">筛选结果</div>
-            <div class="stats-grid">
+            <!-- 单型号态：匹配产品数 -->
+            <div v-if="filterInputMode === 'single'" class="stats-grid">
               <div class="stat-card full-width">
                 <div class="stat-value">{{ filterResult.length }}</div>
+                <div class="stat-label">匹配产品数</div>
+              </div>
+            </div>
+            <!-- 多型号态：输入型号数 / 已匹配 / 未匹配 / 产品数 -->
+            <div v-else class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-value">{{ filterMultiStats ? filterMultiStats.totalInputs : 0 }}</div>
+                <div class="stat-label">输入型号数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ multiMatchedInputs }}</div>
+                <div class="stat-label">已匹配型号</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ filterMultiStats ? (filterMultiStats.totalInputs - multiMatchedInputs) : 0 }}</div>
+                <div class="stat-label">未匹配型号</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ filteredFilterResult.filter(r => !r.unmatched).length }}</div>
                 <div class="stat-label">匹配产品数</div>
               </div>
             </div>
@@ -1183,42 +1271,54 @@
 
         <!-- ============ 强茂品牌 ============ -->
         <div v-if="currentBrand === 'qiangmao'">
-          <!-- 产品型号输入（多行） -->
+          <!-- 产品型号 -->
           <div class="filter-section">
-            <div class="filter-section-title">产品型号（每行一个，支持多个）</div>
-            <el-input
-              v-model="qmInputText"
-              type="textarea"
-              :rows="8"
-              placeholder="PJQ5588&#10;PTMQC046N03LSC1&#10;PSMD126N10NSC1&#10;PSMQC075N10LSC1"
-              size="small">
-            </el-input>
-          </div>
-
-          <!-- 操作按钮 -->
-          <div class="filter-actions">
-            <el-button type="primary" @click="parseQmInput" style="flex: 1;">
-              解析
-            </el-button>
-            <el-button type="success" @click="runQmFilter" :loading="qmFiltering" style="flex: 1;">
-              查询
-            </el-button>
-          </div>
-
-          <!-- 解析出的型号列表（复选框） -->
-          <div v-if="qmParsedItems.length > 0" class="filter-section">
             <div class="filter-section-title" style="display: flex; justify-content: space-between; align-items: center;">
-              <span>已解析型号（{{ qmParsedItems.length }}个）</span>
-              <div style="display: flex; gap: 8px;">
-                <el-button size="mini" type="text" @click="toggleQmAll(true)">全选</el-button>
-                <el-button size="mini" type="text" @click="toggleQmAll(false)">全不选</el-button>
-                <el-button size="mini" type="text" @click="clearQmParsed" style="color: var(--color-error);">清空</el-button>
+              <span>产品型号</span>
+              <el-button size="mini" type="text" @click="toggleQmInputMode">
+                {{ qmInputMode === 'single' ? '切换多型号' : '切换单型号' }}
+              </el-button>
+            </div>
+            <!-- 单型号态 -->
+            <div v-show="qmInputMode === 'single'">
+              <el-input
+                v-model="qmSingleText"
+                placeholder="如: PJQ5588"
+                size="small"
+                clearable
+                @keyup.enter.native="runQmFilter">
+              </el-input>
+              <div class="filter-actions">
+                <el-button type="primary" @click="runQmFilter" :loading="qmFiltering" style="flex: 1;">
+                  查询
+                </el-button>
+                <el-button @click="resetQmFilter" style="flex: 1;">
+                  重置
+                </el-button>
+              </div>
+              <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
+                支持精确匹配与模糊匹配（型号包含关系）
               </div>
             </div>
-            <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 4px; padding: 8px;">
-              <div v-for="(item, idx) in qmParsedItems" :key="idx" style="display: flex; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--color-background-secondary);">
-                <el-checkbox v-model="item.checked" style="margin-right: 8px;"></el-checkbox>
-                <span :style="{ color: item.checked ? 'var(--color-accent)' : 'var(--color-text-tertiary)', fontWeight: item.checked ? '600' : 'normal', fontSize: '13px' }">{{ item.partNumber }}</span>
+            <!-- 多型号态 -->
+            <div v-show="qmInputMode === 'multi'">
+              <el-input
+                v-model="qmInputText"
+                type="textarea"
+                :autosize="{ minRows: 8, maxRows: 25 }"
+                placeholder="PJQ5588&#10;PTMQC046N03LSC1&#10;PSMD126N10NSC1&#10;PSMQC075N10LSC1"
+                size="small">
+              </el-input>
+              <div class="filter-actions">
+                <el-button type="primary" @click="runQmFilter" :loading="qmFiltering" style="flex: 1;">
+                  查询
+                </el-button>
+                <el-button @click="resetQmFilter" style="flex: 1;">
+                  重置
+                </el-button>
+              </div>
+              <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
+                每行输入一个型号，点击查询按输入顺序匹配（最多 200 行）
               </div>
             </div>
           </div>
@@ -1226,9 +1326,29 @@
           <!-- 筛选结果统计 -->
           <div v-if="qmFilterResult" class="form-item" style="margin-top: 20px;">
             <div class="section-title">筛选结果</div>
-            <div class="stats-grid">
+            <!-- 单型号态：匹配产品数 -->
+            <div v-if="qmInputMode === 'single'" class="stats-grid">
               <div class="stat-card full-width">
                 <div class="stat-value">{{ qmFilterResult.length }}</div>
+                <div class="stat-label">匹配产品数</div>
+              </div>
+            </div>
+            <!-- 多型号态：输入型号数 / 已匹配 / 未匹配 / 产品数 -->
+            <div v-else class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-value">{{ qmMultiStats ? qmMultiStats.totalInputs : 0 }}</div>
+                <div class="stat-label">输入型号数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ qmMultiStats ? qmMultiStats.matchedInputs : 0 }}</div>
+                <div class="stat-label">已匹配型号</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ qmMultiStats ? qmMultiStats.unmatchedInputs : 0 }}</div>
+                <div class="stat-label">未匹配型号</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ qmMultiStats ? qmMultiStats.productCount : 0 }}</div>
                 <div class="stat-label">匹配产品数</div>
               </div>
             </div>
@@ -1239,6 +1359,82 @@
             </div>
           </div>
         </div><!-- /.强茂品牌 -->
+
+        <!-- ============ 大毅品牌 ============ -->
+        <div v-if="currentBrand === 'dayi'">
+          <!-- 型号输入 -->
+          <div class="filter-section">
+            <div class="filter-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>他牌电阻型号</span>
+              <el-button size="mini" type="text" @click="toggleDyInputMode">
+                {{ dyInputMode === 'single' ? '切换多型号' : '切换单型号' }}
+              </el-button>
+            </div>
+            <!-- 单型号态 -->
+            <div v-show="dyInputMode === 'single'">
+              <el-input
+                v-model="dySingleText"
+                placeholder="如: AC0402JR-070RL"
+                size="small"
+                clearable
+                @keyup.enter.native="runDyConvert">
+              </el-input>
+              <div class="filter-actions">
+                <el-button type="primary" @click="runDyConvert" :loading="dyParsing" style="flex: 1;">
+                  查询
+                </el-button>
+              </div>
+            </div>
+            <!-- 多型号态 -->
+            <div v-show="dyInputMode === 'multi'">
+              <el-input
+                v-model="dyInputText"
+                type="textarea"
+                :autosize="{ minRows: 8, maxRows: 25 }"
+                placeholder="AC0402JR-070RL&#10;AC0402FR-0722RL&#10;RK73H1JTTD1002F&#10;CRCW040210K0FKED"
+                size="small">
+              </el-input>
+              <div class="filter-actions">
+                <el-button type="primary" @click="runDyConvert" :loading="dyParsing" style="flex: 1;">
+                  查询
+                </el-button>
+                <el-button @click="clearDyResult" style="flex: 1;">
+                  重置
+                </el-button>
+              </div>
+            </div>
+            <div style="margin-top: 6px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6;">
+              支持解析：国巨(AC/RC/AF/SR/AR/PE/PA)、兴亚(RK73B/H/G)、罗姆(MCR)、威世(CRCW/RCA)<br>
+              自动去除标点符号和空格，支持粘贴整段规格描述（如：RES,20KΩ，±1%，1/16W，SMD0402,国巨，AC0402FR-0720KL，AEC-Q200）<br>
+              {{ dyInputMode === 'multi' ? '每行一个型号，点击"查询"换算为大毅型号。' : '输入型号后点击"查询"换算为大毅型号。' }}
+              <div style="margin-top: 4px; color: var(--color-error);">注：仅做参考</div>
+            </div>
+          </div>
+
+          <!-- 解析结果统计 -->
+          <div v-if="dyResult" class="form-item" style="margin-top: 20px;">
+            <div class="section-title">解析结果</div>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-value">{{ dyStats.total }}</div>
+                <div class="stat-label">输入型号数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ dyStats.ok }}</div>
+                <div class="stat-label">已换算</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ dyStats.fail }}</div>
+                <div class="stat-label">未识别</div>
+              </div>
+            </div>
+            <div v-if="dyStats.ok > 0" class="button-group" style="margin-top: 15px;">
+              <el-button type="success" @click="exportDyResult" style="flex: 1;">
+                导出Excel
+              </el-button>
+            </div>
+          </div>
+        </div><!-- /.大毅品牌 -->
       </div>
 
       <!-- 右侧结果面板 -->
@@ -1257,10 +1453,17 @@
               </span>
             </template>
             <!-- 强茂品牌 -->
-            <template v-else>
+            <template v-else-if="currentBrand === 'qiangmao'">
               <span>筛选结果</span>
               <span v-if="qmFilterResult" style="font-size: 14px; font-weight: normal; color: var(--color-text-secondary); margin-left: 10px;">
                 共 {{ filteredQmFilterResult.length }} 条
+              </span>
+            </template>
+            <!-- 大毅品牌 -->
+            <template v-else>
+              <span>换算结果</span>
+              <span v-if="dyResult" style="font-size: 14px; font-weight: normal; color: var(--color-text-secondary); margin-left: 10px;">
+                共 {{ filteredDyResult.length }} 条
               </span>
             </template>
           </div>
@@ -1301,7 +1504,7 @@
           <div v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult" style="display: flex; gap: 10px; align-items: center;">
             <el-input
               v-model="filterSearchText"
-              placeholder="搜索产品型号..."
+              :placeholder="filterInputMode === 'multi' ? '搜索输入型号或产品型号...' : '搜索产品型号...'"
               clearable
               size="small"
               style="width: 250px;">
@@ -1317,6 +1520,26 @@
               style="width: 250px;">
             </el-input>
           </div>
+          <!-- 大毅 - 换算结果搜索 -->
+          <div v-if="currentBrand === 'dayi' && dyResult" style="display: flex; gap: 10px; align-items: center;">
+            <el-input
+              v-model="dySearchText"
+              placeholder="搜索输入型号或大毅型号..."
+              clearable
+              size="small"
+              style="width: 250px;">
+            </el-input>
+            <el-select
+              v-model="dyStatusFilter"
+              placeholder="换算状态"
+              size="small"
+              clearable
+              style="width: 120px;">
+              <el-option label="全部" value=""></el-option>
+              <el-option label="已换算" value="ok"></el-option>
+              <el-option label="未识别" value="fail"></el-option>
+            </el-select>
+          </div>
         </div>
 
         <div class="results-body">
@@ -1329,18 +1552,13 @@
 
           <div v-if="currentBrand === 'weirong' && activeMode === 'filter' && !filterResult" class="empty-state">
             <i class="el-icon-search"></i>
-            <div>请设置筛选条件并点击"查询"</div>
+            <div>{{ filterInputMode === 'multi' ? '请输入产品型号并点击"查询"' : '请设置筛选条件并点击"查询"' }}</div>
           </div>
 
           <!-- BOM匹配结果表格 -->
-          <el-table
+          <results-table
             v-if="currentBrand === 'weirong' && activeMode === 'bom' && currentSheet && !currentSheet.skipped"
-            :data="filteredResults"
-            stripe
-            border
-            :height="tableHeight"
-            style="flex: 1;"
-            :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
+            :data="filteredResults">
             <el-table-column prop="originalIndex" label="#" width="50" align="center"></el-table-column>
             <el-table-column prop="desc" label="物料描述" min-width="200">
               <template slot-scope="scope">
@@ -1401,7 +1619,7 @@
                 </el-popover>
               </template>
             </el-table-column>
-          </el-table>
+          </results-table>
 
           <!-- 当前 sheet 被跳过的提示 -->
           <div v-if="currentBrand === 'weirong' && activeMode === 'bom' && currentSheet && currentSheet.skipped" class="empty-state">
@@ -1425,18 +1643,28 @@
           </div>
 
           <!-- 微容 - 型号筛选结果表格 -->
-          <el-table
+          <results-table
             v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult"
-            :data="filteredFilterResult"
-            stripe
-            border
-            :height="tableHeight"
-            style="flex: 1;"
-            :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
-            <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
+            :data="filteredFilterResult">
+            <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
+            <!-- 多型号态：首列显示对应的输入型号 -->
+            <el-table-column v-if="filterInputMode === 'multi'" prop="inputName"
+              label="输入型号" min-width="170" align="center">
+              <template slot-scope="scope">
+                <span style="font-weight: 600; color: var(--color-text-secondary);">{{ scope.row.inputName }}</span>
+              </template>
+            </el-table-column>
+            <!-- 多型号态：该输入在当前视图命中的产品数（未匹配为 0） -->
+            <el-table-column v-if="filterInputMode === 'multi'" prop="hitCount"
+              label="命中产品数" width="90" align="center">
+              <template slot-scope="scope">
+                <span :style="scope.row.hitCount > 1 ? 'font-weight: 600; color: var(--color-accent);' : ''">{{ scope.row.hitCount }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="productName" label="产品型号" min-width="190">
               <template slot-scope="scope">
-                <span style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
+                <span v-if="scope.row.unmatched" style="color: var(--color-text-tertiary);">未匹配</span>
+                <span v-else style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="features" label="产品特点" min-width="260">
@@ -1474,25 +1702,20 @@
                 </el-popover>
               </template>
             </el-table-column>
-          </el-table>
+          </results-table>
 
           <!-- ============ 强茂品牌 ============ -->
           <!-- 空状态 - 强茂筛选 -->
           <div v-if="currentBrand === 'qiangmao' && !qmFilterResult" class="empty-state">
             <i class="el-icon-search"></i>
-            <div>请输入产品型号，点击"解析"后勾选，再点击"查询"</div>
+            <div>{{ qmInputMode === 'multi' ? '请输入产品型号（每行一个）并点击"查询"' : '请输入产品型号并点击"查询"' }}</div>
           </div>
 
           <!-- 强茂 - 筛选结果表格 -->
-          <el-table
+          <results-table
             v-if="currentBrand === 'qiangmao' && qmFilterResult"
-            :data="filteredQmFilterResult"
-            stripe
-            border
-            :height="tableHeight"
-            style="flex: 1;"
-            :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}">
-            <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
+            :data="filteredQmFilterResult">
+            <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
             <el-table-column prop="partNumber" label="产品型号" min-width="180">
               <template slot-scope="scope">
                 <span style="font-weight: 600; color: var(--color-accent);">{{ scope.row.partNumber }}</span>
@@ -1520,7 +1743,70 @@
                 <span v-else style="color: var(--color-text-tertiary);">-</span>
               </template>
             </el-table-column>
-          </el-table>
+          </results-table>
+
+          <!-- ============ 大毅品牌 ============ -->
+          <!-- 空状态 - 大毅换算 -->
+          <div v-if="currentBrand === 'dayi' && !dyResult" class="empty-state">
+            <i class="el-icon-search"></i>
+            <div>{{ dyInputMode === 'multi' ? '请输入他牌电阻型号（每行一个），点击"查询"换算为大毅型号' : '请输入他牌电阻型号，点击"查询"换算为大毅型号' }}</div>
+          </div>
+
+          <!-- 大毅 - 换算结果表格 -->
+          <results-table
+            v-if="currentBrand === 'dayi' && dyResult"
+            :data="filteredDyResult">
+            <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
+            <el-table-column prop="input" label="输入型号" min-width="170">
+              <template slot-scope="scope">
+                <span style="font-weight: 600; color: var(--color-text-secondary);">{{ scope.row.input }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="brandLabel" label="厂家" width="80" align="center"></el-table-column>
+            <el-table-column prop="dayiModel" label="大毅型号" min-width="150" align="center">
+              <template slot-scope="scope">
+                <span v-if="scope.row.dayiModel" style="font-weight: 600; color: var(--color-accent);">{{ scope.row.dayiModel }}</span>
+                <el-tag v-else type="danger" size="mini">未识别</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="dayiSeries" label="大毅系列" width="90" align="center">
+              <template slot-scope="scope">
+                <span v-if="scope.row.dayiSeries">{{ scope.row.dayiSeries }}</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="size" label="封装" width="80" align="center">
+              <template slot-scope="scope">
+                <span v-if="scope.row.size">{{ scope.row.size }}</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="tol" label="精度" width="80" align="center">
+              <template slot-scope="scope">
+                <span v-if="scope.row.tol">{{ scope.row.tol }}</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="resistanceFormatted" label="阻值" width="100" align="center">
+              <template slot-scope="scope">
+                <span v-if="scope.row.resistanceFormatted">{{ scope.row.resistanceFormatted }}</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="dayiResCode" label="阻值码" width="90" align="center">
+              <template slot-scope="scope">
+                <span v-if="scope.row.dayiResCode">{{ scope.row.dayiResCode }}</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="200">
+              <template slot-scope="scope">
+                <span v-if="scope.row.error" style="color: var(--color-error);">{{ scope.row.error }}</span>
+                <span v-else-if="scope.row.note" style="color: var(--color-text-tertiary);">{{ scope.row.note }}</span>
+                <span v-else style="color: var(--color-text-tertiary);">-</span>
+              </template>
+            </el-table-column>
+          </results-table>
         </div>
       </div>
     </div>
