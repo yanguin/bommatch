@@ -1657,9 +1657,11 @@
 
           <!-- 微容 - 型号筛选结果表格 -->
           <results-table
+            ref="filterResultsTable"
             v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult"
             :data="filteredFilterResult"
-            @selection-change="onSpecSelectionChange">
+            @selection-change="onSpecSelectionChange"
+            @filter-change="onFilterColChange">
             <!-- 勾选列：用于规格书批量下载；sel-col 供选区复制/高亮跳过 -->
             <el-table-column type="selection" width="42" align="center" resizable="false"
               class-name="sel-col" label-class-name="sel-col"></el-table-column>
@@ -1692,11 +1694,16 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"></el-table-column>
-            <el-table-column prop="tempCharacteristics" label="温度特性" width="100" align="center"></el-table-column>
-            <el-table-column prop="capacity" label="标称容量" min-width="120"></el-table-column>
-            <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"></el-table-column>
-            <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"></el-table-column>
+            <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"
+              column-key="size" :filters="colFilterOptions.size"></el-table-column>
+            <el-table-column prop="tempCharacteristics" label="温度特性" width="100" align="center"
+              column-key="tempCharacteristics" :filters="colFilterOptions.tempCharacteristics"></el-table-column>
+            <el-table-column prop="capacity" label="标称容量" min-width="120"
+              column-key="capacity" :filters="colFilterOptions.capacity"></el-table-column>
+            <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"
+              column-key="capacityDeviation" :filters="colFilterOptions.capacityDeviation"></el-table-column>
+            <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"
+              column-key="voltage" :filters="colFilterOptions.voltage"></el-table-column>
             <!-- 规格书列 -->
             <el-table-column label="规格书" width="80" align="center">
               <template slot-scope="scope">

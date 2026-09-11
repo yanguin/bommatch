@@ -14,6 +14,30 @@ const RESISTOR_BRAND_LABEL = {
   dayi: '大毅'
 };
 
+// ============ 表头筛选选项排序辅助 ============
+// 容量文本 → pF 数值（"680pF"→680、"3.3nF"→3300、"10uF"→1e7），解析失败返回 null
+function capacityToPf(text) {
+  const m = /^([\d.]+)\s*(p|n|u|µ|μ)?F$/i.exec(String(text).trim());
+  if (!m) return null;
+  const mult = { p: 1, n: 1e3, u: 1e6, 'µ': 1e6, 'μ': 1e6 };
+  return parseFloat(m[1]) * (mult[m[2].toLowerCase()] || 1);
+}
+// 数值优先排序（解析失败排最后，同值按文本序），parse 返回 null 表示无法解析
+function makeNumericSort(parse) {
+  return (a, b) => {
+    const pa = parse(a), pb = parse(b);
+    if (pa === null && pb === null) return a < b ? -1 : a > b ? 1 : 0;
+    if (pa === null) return 1;
+    if (pb === null) return -1;
+    return pa - pb || (a < b ? -1 : a > b ? 1 : 0);
+  };
+}
+// 偏差取数值（"±0.5pF"→0.5、"±5%"→5）
+function deviationToNum(text) {
+  const n = parseFloat(String(text).replace('±', ''));
+  return isNaN(n) ? null : n;
+}
+
 // ============ 可复用结果表格骨架 ============
 // 统一 stripe/border/高度/表头样式，列通过默认插槽传入
 // 用法：<results-table :data="filteredXxx" v-if="..."><el-table-column .../></results-table>
@@ -24,6 +48,7 @@ Vue.component('results-table', {
   },
   template: `
     <el-table
+      ref="innerTable"
       :data="data"
       stripe
       border
@@ -31,6 +56,7 @@ Vue.component('results-table', {
       style="flex: 1;"
       :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}"
       @selection-change="$emit('selection-change', $event)"
+      @filter-change="$emit('filter-change', $event)"
       @mousedown.native="onTdMouseDown">
       <el-table-column
         type="index"
@@ -261,6 +287,8 @@ new Vue({
       // 型号筛选结果
       filterResult: null,
       filterSearchText: '',
+      // 表头列筛选勾选值（key=列 column-key，值=勾选项数组；与搜索框叠加 AND 过滤）
+      colFilterActive: { size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] },
       // 型号筛选结果表格勾选的行（用于规格书批量下载/浏览器打开）
       specSelectedRows: [],
 
@@ -362,12 +390,43 @@ new Vue({
       return results;
     },
 
+    // 表头筛选选项：按当前查询结果动态去重生成（非硬编码），容量/偏差/电压按数值序
+    colFilterOptions() {
+      const empty = { size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] };
+      if (!this.filterResult) return empty;
+      const pick = (field, sortFn) => {
+        const set = new Set();
+        for (const r of this.filterResult) {
+          const v = r[field];
+          if (v !== undefined && v !== null && v !== '') set.add(v);
+        }
+        const arr = [...set];
+        arr.sort(sortFn || ((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+        return arr.map(v => ({ text: String(v), value: v }));
+      };
+      return {
+        size: pick('size'), // 字符串序即英寸码序（01005 < 0201 < 0402 < ...）
+        tempCharacteristics: pick('tempCharacteristics'),
+        capacity: pick('capacity', makeNumericSort(capacityToPf)),
+        capacityDeviation: pick('capacityDeviation', makeNumericSort(deviationToNum)),
+        voltage: pick('voltage', makeNumericSort(t => parseFloat(t)))
+      };
+    },
+
     // 型号筛选结果过滤
     // 匹配系列是查询条件（点"开始匹配"时传给后端限定搜索范围），不在此处实时过滤结果；
-    // 勾选变化不影响已查询出的结果，仅右侧搜索框过滤
+    // 勾选变化不影响已查询出的结果，仅右侧搜索框 + 表头列筛选过滤
     filteredFilterResult() {
       if (!this.filterResult) return [];
-      const results = this.filterResult;
+      let results = this.filterResult;
+
+      // 表头列筛选（与搜索框叠加，AND）
+      for (const field of Object.keys(this.colFilterActive)) {
+        const vals = this.colFilterActive[field];
+        if (vals && vals.length > 0) {
+          results = results.filter(item => vals.includes(item[field]));
+        }
+      }
 
       if (!this.filterSearchText) return results;
 
@@ -1094,6 +1153,27 @@ new Vue({
       }
     },
 
+    // 表头列筛选变化：payload 形如 { size: ['0603/1608M'], capacity: ['680pF'] }，key 为列 column-key
+    onFilterColChange(filters) {
+      for (const key of Object.keys(filters)) {
+        if (Object.prototype.hasOwnProperty.call(this.colFilterActive, key)) {
+          this.colFilterActive[key] = filters[key] || [];
+        }
+      }
+    },
+
+    // 重置表头列筛选：清勾选值 + 清面板 UI（表格未重建时面板勾选状态会残留）
+    resetColFilters() {
+      for (const key of Object.keys(this.colFilterActive)) {
+        this.colFilterActive[key] = [];
+      }
+      this.$nextTick(() => {
+        const rt = this.$refs.filterResultsTable;
+        const inner = rt && rt.$refs.innerTable;
+        if (inner) inner.clearFilter();
+      });
+    },
+
     // 筛选共享逻辑：加载产品 → 调用 IPC → 处理结果
     async _invokeFilter(filterFormPayload, productNameOnly) {
       if (!this.products) {
@@ -1124,6 +1204,7 @@ new Vue({
           specs: Object.freeze(item.specs || [])
         }));
         this.specSelectedRows = [];
+        this.resetColFilters();
         if (result.maxReached) {
           this.$message.warning(`筛选结果已达最大显示数量 (2000条)，建议添加更多筛选条件以缩小范围`);
         } else {
@@ -1195,6 +1276,7 @@ new Vue({
         }));
         this.specSelectedRows = [];
         this.filterMultiStats = res.stats;
+        this.resetColFilters();
 
         if (res.maxReached) {
           this.$message.warning('结果达上限 2000，建议缩小输入');
