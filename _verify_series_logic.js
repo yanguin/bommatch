@@ -111,13 +111,38 @@ const event = { sender: { send: () => {} } };
 
   // ===== 5. 系列条件同样作用于精确/模糊型号匹配（用真实存在的 A 系列产品）=====
   const realA = products.list.find(p => /^A104K0402X7T/.test(p.productName));
+  // parseViiyong 上线后：真实微容型号可被解析出规格，跨系列同规格替代料会被找出
+  // （例：A104K0402X7T160NBT 只勾 T → 命中同规格的 T104K0402X7T160NBT，这正是系列查询的用途）
   r = await fn(event, { products, names: [realA.productName], series: ['T'] });
-  check('A产品型号+只勾T → 未匹配占位', r.data.length === 1 && r.data[0].unmatched === true && r.data[0].hitCount === 0);
+  const tHit = r.data.find(d => !d.unmatched);
+  check('A产品型号+只勾T → 命中同规格T系列产品（或无同规格时未匹配占位）',
+    r.data.length >= 1 && (tHit ? /^[T]/.test(tHit.productName) : r.data[0].unmatched === true),
+    JSON.stringify(r.data.map(d => d.productName)));
+  if (tHit) {
+    check('A产品型号+只勾T → T系产品规格一致',
+      tHit.capacity === realA.capacity && tHit.tempCharacteristics === realA.tempCharacteristics
+      && (tHit.size || '').split('/')[0] === (realA.size || '').split('/')[0]
+      && parseFloat(tHit.voltage) === parseFloat(realA.voltage),
+      `${tHit.productName}: ${tHit.capacity}/${tHit.tempCharacteristics}/${tHit.size}/${tHit.voltage}V`);
+  }
   r = await fn(event, { products, names: [realA.productName], series: ['A'] });
   check('A产品型号+勾A → 精确命中', r.data.length === 1 && r.data[0].hitCount === 1 && !r.data[0].unmatched);
-  // 5b. 真实型号不会被规格宽松解析误伤（parseDescLoose 返回 null，型号走精确/模糊）
+  // 5b. 真实微容型号现在可被 parseViiyong 解析出完整规格（用于库中无此变体时的规格匹配），
+  //     且解析结果须与产品库字段一致（容量/偏差/尺寸/介质/电压逐项核对）
   const { parseDescLoose } = require(path.join(__dirname, 'matcher-core.js'));
-  check('真实型号不触发宽松规格解析', parseDescLoose(realA.productName) === null);
+  const spec = parseDescLoose(realA.productName);
+  const capPf = (() => {
+    const m = (realA.capacity || '').match(/^([0-9.]+)\s*(pF|nF|uF|µF)$/i);
+    if (!m) return null;
+    const u = m[2].toLowerCase();
+    return parseFloat(m[1]) * (u === 'pf' ? 1 : u === 'nf' ? 1e3 : 1e6);
+  })();
+  check('真实微容型号 → parseViiyong 解析规格与库字段一致',
+    spec && spec.series === 'A' && spec.cap === capPf
+    && (spec.dev || '').replace(/\s/g, '') === (realA.capacityDeviation || '').replace(/\s/g, '')
+    && spec.size === (realA.size || '').split('/')[0].trim()
+    && spec.temp === 'X7T' && spec.volt === parseFloat(realA.voltage),
+    JSON.stringify(spec));
 
   // ===== 6. 前端不实时过滤（模拟 filteredFilterResult 新逻辑）=====
   // 模拟：查询时勾了 A，查询后用户取消勾选（filterMultiSeries=[]），filteredFilterResult 应不变
