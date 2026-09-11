@@ -1,5 +1,5 @@
 // 渲染进程主逻辑
-const { ipcRenderer, shell } = require('electron');
+const { ipcRenderer, shell, clipboard } = require('electron');
 const matcherCore = require('./matcher-core.js');
 const resistorMatcher = require('./matcher-resistor.js');
 const { splitInputLines } = require('./utils.js');
@@ -30,6 +30,7 @@ Vue.component('results-table', {
       :height="$root.tableHeight"
       style="flex: 1;"
       :header-cell-style="{background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', fontWeight:'var(--font-weight-label)'}"
+      @selection-change="$emit('selection-change', $event)"
       @mousedown.native="onTdMouseDown">
       <el-table-column
         type="index"
@@ -62,9 +63,9 @@ Vue.component('results-table', {
       if (fixed) out.push(fixed);
       return out;
     },
-    // 由鼠标事件定位 body 单元格（header 区域与交互元素不参与选区）
+    // 由鼠标事件定位 body 单元格（header 区域与交互元素不参与选区；checkbox 列留给勾选交互）
     cellPos(e) {
-      if (e.target.closest('a, button, .el-popover__reference')) return null;
+      if (e.target.closest('a, button, .el-popover__reference, .el-checkbox')) return null;
       const td = e.target.closest('td');
       if (!td) return null;
       if (!td.closest('.el-table__body-wrapper, .el-table__fixed-body-wrapper')) return null;
@@ -152,6 +153,7 @@ Vue.component('results-table', {
         for (let r = minR; r <= maxR && r < rows.length; r++) {
           const cells = rows[r].cells;
           for (let c = minC; c <= maxC && c < cells.length; c++) {
+            if (cells[c].classList.contains('sel-col')) continue; // 勾选列不高亮
             cells[c].classList.add('cell-selected');
             this._marked.push(cells[c]);
           }
@@ -186,6 +188,7 @@ Vue.component('results-table', {
         const cells = main.rows[r].cells;
         const cols = [];
         for (let c = minC; c <= maxC && c < cells.length; c++) {
+          if (cells[c].classList.contains('sel-col')) continue; // 勾选列不进入 TSV
           // 单元格内换行/制表符替换为空格，避免破坏 TSV 结构；逐行原样输出保持行对齐
           cols.push((cells[c].innerText || '').replace(/[\t\n\r]+/g, ' ').trim());
         }
@@ -258,6 +261,8 @@ new Vue({
       // 型号筛选结果
       filterResult: null,
       filterSearchText: '',
+      // 型号筛选结果表格勾选的行（用于规格书批量下载/浏览器打开）
+      specSelectedRows: [],
 
       // 型号筛选输入模式：single 单型号 / multi 多型号
       filterInputMode: 'single',
@@ -659,9 +664,194 @@ new Vue({
         this.$message.warning('该产品暂无规格书');
         return;
       }
-      // 补全域名（FileUrl 是相对路径）
-      const fullUrl = url.startsWith('http') ? url : 'https://www.viiyong.com' + url;
-      shell.openExternal(fullUrl);
+      shell.openExternal(this.specFullUrl(url));
+    },
+
+    // 补全规格书 URL（FileUrl 是相对路径）
+    specFullUrl(url) {
+      return url.startsWith('http') ? url : 'https://www.viiyong.com' + url;
+    },
+
+    // 型号筛选表格勾选变化
+    onSpecSelectionChange(rows) {
+      this.specSelectedRows = rows;
+    },
+
+    // 收集勾选行的规格书下载任务
+    // 命名规则：产品型号.pdf；同型号重复（多行或一个产品多份规格书）时加 _2/_3 后缀
+    // 返回 { tasks, skippedRows, dupProducts, dupRowCount }：
+    //   tasks = [{ url, productName, origName, saveName }]
+    //   dupProducts = [{ name, count }] 被勾选多行的型号（下载时已去重，只下一次）
+    //   dupRowCount = 因重复勾选被去重的行数
+    collectSpecTasks() {
+      const tasks = [];
+      const skippedRows = [];
+      const usedNames = new Map();
+      const seen = new Set(); // 同一产品同一份规格书只下一次（多行命中同一产品时去重）
+      const productRowCount = new Map(); // 产品型号 → 勾选行数（含重复勾选）
+      for (const row of this.specSelectedRows) {
+        if (row.unmatched || !row.specs || row.specs.length === 0) {
+          skippedRows.push(row);
+          continue;
+        }
+        productRowCount.set(row.productName, (productRowCount.get(row.productName) || 0) + 1);
+        for (const spec of row.specs) {
+          const url = this.specFullUrl(spec.FileUrl);
+          const dedupKey = row.productName + '|' + url;
+          if (seen.has(dedupKey)) continue;
+          seen.add(dedupKey);
+          let base = String(row.productName || '规格书').replace(/[\\/:*?"<>|]/g, '_');
+          const n = (usedNames.get(base) || 0) + 1;
+          usedNames.set(base, n);
+          if (n > 1) base = `${base}_${n}`;
+          // 原文件名：取 URL 最后一段；取不到时用 Title 兜底
+          let origName = '';
+          try { origName = decodeURIComponent(spec.FileUrl.split('/').pop()) || ''; } catch (e) { /* 保留原样 */ }
+          if (!origName) origName = spec.Title || spec.FileUrl;
+          tasks.push({ url, productName: row.productName, origName, saveName: base + '.pdf' });
+        }
+      }
+      const dupProducts = [...productRowCount.entries()]
+        .filter(([, n]) => n > 1)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : 1));
+      const dupRowCount = [...productRowCount.values()].reduce((s, n) => s + (n - 1), 0);
+      return { tasks, skippedRows, dupProducts, dupRowCount };
+    },
+
+    // 下载勾选的规格书
+    async downloadSelectedSpecs() {
+      if (this.specSelectedRows.length === 0) {
+        this.$message.warning('请先勾选要下载的产品行');
+        return;
+      }
+      const { tasks, skippedRows, dupProducts, dupRowCount } = this.collectSpecTasks();
+      if (tasks.length === 0) {
+        this.$message.warning('勾选的行都没有规格书');
+        return;
+      }
+
+      let dir;
+      if (tasks.length === 1) {
+        // 单份：另存为对话框，文件名预填产品型号
+        const savePath = await ipcRenderer.invoke('save-spec-file', tasks[0].saveName);
+        if (!savePath) return;
+        dir = savePath.replace(/[\\/][^\\/]+$/, '');
+        tasks[0].saveName = savePath.split(/[\\/]/).pop();
+      } else {
+        // 多份：先选父目录，再命名子文件夹
+        const baseDir = await ipcRenderer.invoke('select-directory');
+        if (!baseDir) return;
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const defaultFolder = `规格书_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+        const ret = await this.$prompt('规格书将放入该文件夹', '下载规格书', {
+          inputValue: defaultFolder,
+          inputValidator: (v) => {
+            if (!v || !v.trim()) return '文件夹名不能为空';
+            if (/[\\/:*?"<>|]/.test(v)) return '文件夹名不能包含 \\ / : * ? " < > |';
+            return true;
+          }
+        }).catch(() => null);
+        if (!ret) return;
+        dir = baseDir + '\\' + ret.value.trim();
+      }
+
+      this.loading = true;
+      this.loadingText = `正在下载规格书 0/${tasks.length} ...`;
+      try {
+        const res = await ipcRenderer.invoke('download-specs', {
+          dir,
+          tasks,
+          writeList: tasks.length > 1, // 多份时生成「下载清单.md」
+          dupProducts,                // 重复勾选的型号清单（写入 md）
+          selectedCount: this.specSelectedRows.length
+        });
+        if (res.error) {
+          this.$message.error('下载失败: ' + res.error);
+          return;
+        }
+        let msg = `下载完成：成功 ${res.okCount}/${res.total}`;
+        if (dupRowCount > 0) msg += `（勾选 ${this.specSelectedRows.length} 行，${dupRowCount} 行重复型号已去重）`;
+        if (res.failed.length > 0) msg += `，失败 ${res.failed.length} 个（详见清单）`;
+        if (skippedRows.length > 0) msg += `；${skippedRows.length} 行无规格书已跳过`;
+        this.$message({
+          message: msg,
+          type: res.failed.length > 0 ? 'warning' : 'success',
+          duration: 5000
+        });
+        // 打开所在目录，方便用户查看
+        shell.showItemInFolder(res.listPath || (res.dir + '\\' + tasks[0].saveName));
+      } catch (err) {
+        this.$message.error('下载失败: ' + err.message);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // 「更多」下拉命令
+    onSpecMoreCmd(cmd) {
+      if (cmd === 'download') this.downloadSelectedSpecs();
+      else if (cmd === 'open') this.openSelectedSpecs();
+      else if (cmd === 'copyModel') this.copySelectedModels();
+      else if (cmd === 'copyDetail') this.copySelectedDetails();
+    },
+
+    // 复制勾选行的产品型号（多行换行分隔；未匹配行复制"未匹配"）
+    copySelectedModels() {
+      const names = this.specSelectedRows.map(r => r.productName || (r.unmatched ? '未匹配' : '')).filter(Boolean);
+      if (names.length === 0) {
+        this.$message.warning('勾选的行没有可复制的产品型号');
+        return;
+      }
+      clipboard.writeText(names.join('\n'));
+      let msg = `已复制 ${names.length} 个产品型号`;
+      const unmatched = this.specSelectedRows.filter(r => r.unmatched).length;
+      if (unmatched > 0) msg += `（含 ${unmatched} 个未匹配的输入型号）`;
+      this.$message.success(msg);
+    },
+
+    // 复制勾选行的详细信息：型号/英寸尺寸/温度特性/容量/偏差/电压（如 T104K0201X5R100NJT/0201/X5R/100nF/±10%/10V）
+    // 尺寸取英寸码（0201/1005M → 0201），温度特性取代码（X5R(-55℃~85℃) → X5R），电压补 V；空段自动省略；多行换行分隔
+    // 未匹配行无规格，只复制"未匹配"
+    copySelectedDetails() {
+      const lines = this.specSelectedRows.map(r => [
+        r.productName || (r.unmatched ? '未匹配' : ''),
+        String(r.size || '').split('/')[0],
+        String(r.tempCharacteristics || '').split('(')[0],
+        r.capacity || '',
+        r.capacityDeviation || '',
+        (r.voltage !== undefined && r.voltage !== null && r.voltage !== '') ? r.voltage + 'V' : ''
+      ].filter(s => s !== '').join('/')).filter(Boolean);
+      if (lines.length === 0) {
+        this.$message.warning('勾选的行没有可复制的信息');
+        return;
+      }
+      clipboard.writeText(lines.join('\n'));
+      this.$message.success(`已复制 ${lines.length} 行详细信息`);
+    },
+
+    // 用浏览器打开勾选行的全部规格书（用户自选：与下载并存，URL 去重，>10 个先确认）
+    async openSelectedSpecs() {
+      if (this.specSelectedRows.length === 0) {
+        this.$message.warning('请先勾选要打开的产品行');
+        return;
+      }
+      const { tasks } = this.collectSpecTasks();
+      if (tasks.length === 0) {
+        this.$message.warning('勾选的行都没有规格书');
+        return;
+      }
+      const urls = [...new Set(tasks.map(t => t.url))];
+      if (urls.length > 10) {
+        const ok = await this.$confirm(`将在浏览器打开 ${urls.length} 个标签页，是否继续？`, '提示', {
+          type: 'warning',
+          confirmButtonText: '继续',
+          cancelButtonText: '取消'
+        }).catch(() => null);
+        if (!ok) return;
+      }
+      urls.forEach(u => shell.openExternal(u));
     },
 
     // 导出BOM匹配Excel（多 sheet）
@@ -933,6 +1123,7 @@ new Vue({
           rowNo: idx + 1,
           specs: Object.freeze(item.specs || [])
         }));
+        this.specSelectedRows = [];
         if (result.maxReached) {
           this.$message.warning(`筛选结果已达最大显示数量 (2000条)，建议添加更多筛选条件以缩小范围`);
         } else {
@@ -1002,6 +1193,7 @@ new Vue({
           rowNo: idx + 1,
           specs: Object.freeze(item.specs || [])
         }));
+        this.specSelectedRows = [];
         this.filterMultiStats = res.stats;
 
         if (res.maxReached) {
@@ -1536,6 +1728,11 @@ new Vue({
     // 监听页面加载完成
     this.$nextTick(() => {
       this.calcTableHeight();
+    });
+
+    // 规格书下载进度
+    ipcRenderer.on('spec-dl-progress', (e, p) => {
+      this.loadingText = p.total ? `正在下载规格书 ${p.done}/${p.total} ${p.name || ''}` : '正在下载规格书...';
     });
   }
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
@@ -684,6 +684,123 @@ ipcMain.handle('toggle-pin-window', async (event) => {
     return { pinned: !isPinned };
   }
   return { pinned: false };
+});
+
+// ========== 规格书下载 IPC 处理 ==========
+
+// 选择目录（多选下载时选父目录）
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory']
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+// 单份规格书：另存为对话框（文件名预填产品型号）
+ipcMain.handle('save-spec-file', async (event, defaultName) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultName,
+    filters: [{ name: 'PDF文件', extensions: ['pdf'] }]
+  });
+  return result.canceled ? null : result.filePath;
+});
+
+// 用 Electron net 下载单个文件到 dest（跟随 Chromium 网络栈/系统代理）
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const request = net.request(encodeURI(url));
+    // 超时保护：30 秒无响应则中止
+    const timer = setTimeout(() => {
+      request.abort();
+      reject(new Error('下载超时'));
+    }, 30000);
+    request.on('response', (response) => {
+      if (response.statusCode !== 200) {
+        clearTimeout(timer);
+        response.resume();
+        reject(new Error('HTTP ' + response.statusCode));
+        return;
+      }
+      const ws = fs.createWriteStream(dest);
+      response.pipe(ws);
+      ws.on('finish', () => {
+        clearTimeout(timer);
+        ws.close(resolve);
+      });
+      ws.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+    request.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    request.end();
+  });
+}
+
+// 批量下载规格书
+// tasks: [{ url, productName, origName, saveName }]，全部落到 dir（不存在则创建）
+// writeList 为 true 时在 dir 下生成「下载清单.md」（原名 → 新名映射 + 成功/失败清单）
+ipcMain.handle('download-specs', async (event, { dir, tasks, writeList, dupProducts, selectedCount }) => {
+  try {
+    if (!dir || !Array.isArray(tasks) || tasks.length === 0) {
+      return { error: '下载参数无效' };
+    }
+    fs.mkdirSync(dir, { recursive: true });
+
+    const results = [];
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      event.sender.send('spec-dl-progress', { done: i, total: tasks.length, name: t.saveName });
+      const dest = path.join(dir, t.saveName);
+      try {
+        await downloadFile(t.url, dest);
+        results.push({ productName: t.productName, origName: t.origName, saveName: t.saveName, ok: true });
+      } catch (err) {
+        // 失败时删掉可能残留的半截文件
+        try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch (e) { /* 忽略清理失败 */ }
+        results.push({ productName: t.productName, origName: t.origName, saveName: t.saveName, ok: false, reason: err.message });
+      }
+    }
+    event.sender.send('spec-dl-progress', { done: tasks.length, total: tasks.length, name: '' });
+
+    const okCount = results.filter(r => r.ok).length;
+    let listPath = null;
+    if (writeList) {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const lines = [
+        '# 规格书下载清单',
+        '',
+        `- 下载时间：${timeStr}`,
+        `- 保存目录：${dir}`,
+        `- 共 ${results.length} 个，成功 ${okCount} 个，失败 ${results.length - okCount} 个`
+      ];
+      // 重复型号统计：同一型号勾选了多行，下载时按型号去重（只下载一份）
+      if (Array.isArray(dupProducts) && dupProducts.length > 0) {
+        const dupTotal = dupProducts.reduce((s, d) => s + d.count - 1, 0);
+        lines.push(`- 勾选 ${selectedCount} 行，其中 ${dupTotal} 行为重复型号，下载时已去重`);
+        lines.push('', `## 重复型号（${dupProducts.length} 个）`, '');
+        for (const d of dupProducts) {
+          lines.push(`- ${d.name} *${d.count}`);
+        }
+      }
+      lines.push('', '| 序号 | 产品型号 | 原PDF文件名 | 保存为 | 状态 |', '|---|---|---|---|---|');
+      results.forEach((r, i) => {
+        lines.push(`| ${i + 1} | ${r.productName} | ${r.origName} | ${r.saveName} | ${r.ok ? '成功' : '失败：' + r.reason} |`);
+      });
+      lines.push('');
+      listPath = path.join(dir, '下载清单.md');
+      fs.writeFileSync(listPath, lines.join('\n'), 'utf8');
+    }
+
+    return { dir, listPath, total: results.length, okCount, failed: results.filter(r => !r.ok) };
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 
 // 获取窗口置顶状态

@@ -1502,6 +1502,19 @@
           </div>
           <!-- 微容 - 型号筛选模式的搜索 -->
           <div v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult" style="display: flex; gap: 10px; align-items: center;">
+            <el-dropdown size="small" trigger="click"
+              :disabled="specSelectedRows.length === 0"
+              @command="onSpecMoreCmd">
+              <el-button type="primary" size="small" :disabled="specSelectedRows.length === 0">
+                更多({{ specSelectedRows.length }})<i class="el-icon-arrow-down el-icon--right"></i>
+              </el-button>
+              <el-dropdown-menu slot="dropdown">
+                <el-dropdown-item command="download" icon="el-icon-download">下载规格书</el-dropdown-item>
+                <el-dropdown-item command="open" icon="el-icon-link">用浏览器打开规格书</el-dropdown-item>
+                <el-dropdown-item command="copyModel" icon="el-icon-document-copy" divided>复制产品型号</el-dropdown-item>
+                <el-dropdown-item command="copyDetail" icon="el-icon-document-copy">复制详细信息</el-dropdown-item>
+              </el-dropdown-menu>
+            </el-dropdown>
             <el-input
               v-model="filterSearchText"
               :placeholder="filterInputMode === 'multi' ? '搜索输入型号或产品型号...' : '搜索产品型号...'"
@@ -1645,7 +1658,11 @@
           <!-- 微容 - 型号筛选结果表格 -->
           <results-table
             v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult"
-            :data="filteredFilterResult">
+            :data="filteredFilterResult"
+            @selection-change="onSpecSelectionChange">
+            <!-- 勾选列：用于规格书批量下载；sel-col 供选区复制/高亮跳过 -->
+            <el-table-column type="selection" width="42" align="center" resizable="false"
+              class-name="sel-col" label-class-name="sel-col"></el-table-column>
             <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
             <!-- 多型号态：首列显示对应的输入型号 -->
             <el-table-column v-if="filterInputMode === 'multi'" prop="inputName"
