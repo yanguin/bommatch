@@ -39,11 +39,67 @@ function tempCode(s) {
   return code;
 }
 
+// 公制尺寸码（mm）→ 英制尺寸码（inch），皇上 2026-09-07 提供
+// 注：0603 存在歧义——英制 0603 与公制 0603（=英制 0201）写法相同。
+//     此处保留英制语义（0603 不转换），公制 0201 请用英制写法 0201。
+const METRIC_TO_INCH = {
+  '1005': '0402', '1608': '0603', '2012': '0805', '3216': '1206',
+  '3225': '1210', '4532': '1812', '5025': '2010', '5750': '2220',
+  '6432': '2512', '7450': '2920'
+};
+
+// 村田 Murata 额定电压码映射（GRM/GCM/GRT/GCJ/GJM 全系列共用，按村田官方规格书）
+// 低压：0E=2.5V, 0G=4V, 0J=6.3V, 1A=10V
+// 中压：1C=16V, 1E=25V, YA=35V(专用码，不循前缀规律), 1H=50V, 1J=63V, 1K=80V, 2A=100V
+// 高压：2D=200V, 2E=250V, YD=300V(专用码), 2W=450V, 2H=500V, 2J=630V
+// 超高压：3A=1kV, 3B=1.25kV, 3D=2kV, 3F=3.15kV（需注意绝缘）
+// 安规：E2=AC 250V（仅 GB/GD/GF 安规系列使用，按 250 参与规格匹配）
+const murataVoltMap = {
+  '0E': 2.5, '0G': 4, '0J': 6.3,
+  '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1J': 63, '1K': 80,
+  '2A': 100, '2D': 200, '2E': 250, 'YD': 300, '2W': 450, '2H': 500, '2J': 630,
+  '3A': 1000, '3B': 1250, '3D': 2000, '3F': 3150,
+  'E2': 250
+};
+
+// TDK 额定电压码映射（CGA/CNA 系列，按 TDK 官方规格书）
+// 低压：0E=2.5V(大容量低耐压常见), 0G=4V, 0J=6.3V, 1A=10V
+// 中压：1C=16V, 1E=25V, 1V=35V(注意村田同档为 YA), 1H=50V, 1N=75V(TDK 特有档)
+// 中高压：2A=100V, 2D=200V, 2E=250V, 2F=315V(照明等应用), 2V=350V(特殊应用档), 2W=450V
+// 高压：2H=500V, 2J=630V
+// 超高压：3A=1kV, 3D=2kV, 3F=3kV(注意村田 3F=3.15kV，勿混)
+// 保留旧码兼容：0L=2.5V, 1K=80V, 2K=600V, 3B=1250V
+const tdkVoltMap = {
+  '0E': 2.5, '0G': 4, '0J': 6.3,
+  '1A': 10, '1C': 16, '1E': 25, '1V': 35, '1H': 50, '1N': 75,
+  '2A': 100, '2D': 200, '2E': 250, '2F': 315, '2V': 350, '2W': 450,
+  '2H': 500, '2J': 630,
+  '3A': 1000, '3D': 2000, '3F': 3000,
+  // 旧码兼容（用户表未列，但与官方表无冲突）
+  '0L': 2.5, '1K': 80, '2K': 600, '3B': 1250
+};
+
+// 厚度码（mm），皇上 2026-09-08 提供。字母码体系，目前仅三环 TCC 使用
+// ⚠ 与 TDK 通用系列的厚度位不是同一套：TDK 用数字码（160=1.60mm），此处是字母码（H=1.60mm）
+const THICKNESS_CODES = {
+  A: 0.50, B: 0.60, C: 0.80, D: 0.85, E: 1.00,
+  F: 1.25, H: 1.60, G: 2.00, M: 2.50, Z: 0.30
+};
+
+// TDK 包装码（通用系列第 8 位，皇上 2026-09-08 提供）
+const TDK_PACK_CODES = { A: '7"卷带', B: '13"卷带', C: '托盘' };
+
+// AVX 端头码 / 包装码（皇上 2026-09-08 提供）
+const AVX_TERM_CODES = { T: '镀镍锡', Z: 'FLEXITERM', U: '导电环氧' };
+const AVX_PACK_CODES = { '2': '7"卷盘', '4': '13"卷盘' };
+
 function sizeInch(s) {
   if (!s) return null;
   let v = String(s).trim().replace(/^(SMD|SM)/i, '').trim();
   const m = v.match(/(\d{4,6})/);
-  return m ? m[1] : null;
+  if (!m) return null;
+  // 公制写法归一为英制，与产品库 size 字段（"1206/3216M" 的英制部分）对齐
+  return METRIC_TO_INCH[m[1]] || m[1];
 }
 
 function normDev(s) {
@@ -263,6 +319,69 @@ function parseProductName(name) {
   }
 }
 
+// 微容 Viiyong 自有型号解析
+// 格式：系列(1: A/T/B/V) + 容量码(3, EIA码或R小数) + 偏差(1字母) + 尺寸(4) + 温度码(3) + 电压码(3) + 后缀
+// 示例：A475K1206X7R250N1P → A系列, 4.7µF, ±10%, 1206, X7R, 25V
+//       V475K1206X7R250N1P → V系列, 4.7µF, ±10%, 1206, X7R, 25V
+//       T106K0805X7S6R3NHR → T系列, 10µF, ±10%, 0805, X7S, 6.3V
+//       B9R1D0805SPC251NKT → B系列, 9.1pF, ±0.5pF, 0805, C0G(SPC变体), 250V
+// 用于库中无此型号（后缀变体等）时按规格匹配同规格产品
+function parseViiyong(s) {
+  const m = s.match(/^([ATBV])([0-9R]{3})([A-Z])(\d{4})([A-Z0-9]{3})([0-9R]{3})([A-Z0-9]+)$/);
+  if (!m) return null;
+
+  const seriesLetter = m[1];
+  const capCode = m[2];
+  const devLetter = m[3];
+  const sizeCode = m[4];
+  const tempCodeRaw = m[5];
+  const voltCode = m[6];
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  // 电压码映射（从产品库反推验证）：R 表示小数点；3位无 R 时按 EIA 解码；
+  // 例外：125 → 125V（EIA 解码 12×10⁵ 不合理，特殊指定）
+  let volt;
+  if (voltCode === '125') {
+    volt = 125;
+  } else {
+    volt = eiaCodeToVolt(voltCode);
+  }
+
+  // 尺寸码映射（从产品库反推验证）：绝大多数 4 位码即 EIA 英制码，
+  // 例外：0084 → 008004（超微小）、0105 → 01005
+  const sizeMap = { '0084': '008004', '0105': '01005' };
+  const size = sizeMap[sizeCode] || sizeCode;
+
+  // 温度码映射（含库中实际使用的高可靠变体码，从产品库反推验证）
+  const tempMap = {
+    C0G: 'C0G', GQC: 'C0G', SPC: 'C0G', SQC: 'C0G',
+    H7R: 'X7R', H7S: 'X7S', H7T: 'X7T',
+    S3P: 'X3H', S8P: 'X8G',
+    X5R: 'X5R', X6S: 'X6S', X6T: 'X6T',
+    X7R: 'X7R', X7S: 'X7S', X7T: 'X7T',
+    X8L: 'X8L', X8R: 'X8R'
+  };
+  const temp = tempMap[tempCodeRaw];
+  if (!temp) return null;
+
+  // 偏差码（从产品库反推验证）：微容自家用 A 表示 ±0.05pF（通用码表为 W），
+  // 其余 B/C/D/F/G/J/K/M 与通用表一致
+  const devExtra = { A: '±0.05pF' };
+  const dev = devExtra[devLetter] || devLetterToNorm(devLetter);
+
+  return {
+    series: seriesLetter,
+    cap,
+    dev,
+    size,
+    temp,
+    volt,
+    raw: s
+  };
+}
+
 // ---------- 解析其他品牌 MLCC 贴片电容型号 ----------
 // 支持：国巨 YAGEO(CC/AC)、三星 Samsung(CL)、信昌 PDC(FK/FM/MA)、太阳诱电 Taiyo(M+分类+类型)、
 //       禾伸堂 HolyStone(C+数字)、京瓷 Kyocera(CM/CT/CU/AR)、火炬 Torch(FCC/HGC)、
@@ -279,11 +398,16 @@ function parseOtherBrandMlcc(name) {
   // 三星 Samsung：CL 开头
   if (s.startsWith('CL')) return parseSamsung(s);
 
+  // 太阳诱电 Taiyo Yuden 车规系列：M + 用途码(A/C/B/S) + 类型码(AS/AR/JC/RL) + 数字
+  // 必须排在信昌 PDC 之前：MAAS/MCAR 以 MA/MC 开头，会被 PDC 的 MA 前缀抢走
+  // （2026-09-08 皇上样本实测：4 条 MAAS 全被误判，MCAS 不受影响）
+  if (/^M[ACBS](AS|AR|JC|RL)/.test(s)) return parseTaiyo(s);
+
+  // 太阳诱电 通用系列：{电压码}MK + 尺寸3位，如 JMK212BC6226MG-T / LMK107B7225KA-TR
+  if (/^[AJLTEGUHQS]MK\d/.test(s)) return parseTaiyoGeneral(s);
+
   // 信昌 PDC：FK/FM/FS/FR/FE/FV/FJ/FP/MT/MG 或 MA 开头
   if (/^(FK|FM|FS|FR|FE|FV|FJ|FP|MT|MG|MA)/.test(s)) return parsePdc(s);
-
-  // 太阳诱电 Taiyo Yuden：M + 用途码(A/C/B/S) + 类型码(AS/AR/JC/RL)
-  if (/^M[ACBS](AS|AR|JC|RL)/.test(s)) return parseTaiyo(s);
 
   // 京瓷 Kyocera：CM/CT/CU/AR 开头（需在禾伸堂之前判断，因都以 C 开头）
   if (/^(CM|CT|CU|AR)/.test(s)) return parseKyocera(s);
@@ -291,8 +415,29 @@ function parseOtherBrandMlcc(name) {
   // TDK 东电化：CGA/CNA 开头（需在禾伸堂之前判断，CNA 第二位为字母不冲突但逻辑更清晰）
   if (s.startsWith('CGA') || s.startsWith('CNA')) return parseTdk(s);
 
+  // TDK 东电化 通用系列：C + 公制尺寸(4) + 温度特性(3) + 电压码(2) + 容量码(3)…
+  // 示例：C3216X5R1A107M160AC / C1005X7R1H102K050BA
+  // 必须排在禾伸堂之前：两者都以 C+数字 开头，靠「公制尺寸码 + 3 字符温度码」区分
+  // （禾伸堂是 4 位英制尺寸 + 1 字母介质码）
+  // ⚠ 尺寸段必须限定公制码白名单：禾伸堂 C0603X5R… 的 "X5R" 同样能命中温度码段，会被误抢
+  if (/^C(1005|1608|2012|3216|3225|4532|5025|5750|6432|7450)(X5R|X6S|X7R|X7S|X7T|X8R|X8L|X8M|C0G|NP0|NPO|Y5V|Z5U|CH|JB|U2J)/.test(s)) {
+    return parseTdkGeneral(s);
+  }
+
+  // KEMET：C + 英制尺寸(4) + 系列(1) + 容量(3) + 容差(1) + 电压(1) + 介质(1) + A(1) + 端头(1) + 包装
+  // 示例：C0402C330J5GACTU → 0402 / 33pF / ±5% / 50V / C0G
+  // 必须排在禾伸堂之前：两者都以 C+4位英制尺寸 开头，且禾伸堂分支是 return（失败不再往下试）。
+  // 区分点：KEMET 电压只有 1 位且其后固定跟介质码 + 'A'；禾伸堂电压是 3 位数字
+  if (/^C(0201|0402|0603|0805|1206|1210|1805|1808|1812|1825|2220|2225)[A-Z][\dR]{3}[BCDFGJKM][843521AF][A-Z]A[A-Z]/.test(s)) {
+    return parseKemet(s);
+  }
+
   // 禾伸堂 HolyStone：C 开头 + 数字（尺寸码以数字开头，如 C0603/C1206）
   if (/^C\d/.test(s)) return parseHolystone(s);
+
+  // 三环 CCTC（三环集团）：TCC 开头
+  // 皇上 2026-09-08 提供官方码表。T 开头不与其他厂家冲突，放火炬之后即可
+  if (s.startsWith('TCC')) return parseSanhuan(s);
 
   // 火炬 Torch：FCC 或 HGC 开头
   if (s.startsWith('FCC') || s.startsWith('HGC')) return parseTorch(s);
@@ -312,11 +457,23 @@ function parseOtherBrandMlcc(name) {
   // 村田 Murata：GJM 开头（高频高 Q 型，RF 应用，无对应微容系列）
   if (s.startsWith('GJM')) return parseMurataCommon(s, 'GJM', null);
 
-  // 风华 FH：4位数字开头 + 介质字母(B/CG/X)
-  // 需在村田/国巨/火炬/TDK 之后判断，避免误匹配
-  if (/^\d{4}(B|CG|X)[\dR]{3}/.test(s)) return parseFenghua(s);
+  // 村田 Murata：GCQ 开头（高 Q 射频 MLCC，皇上 2026-09-08 确认结构与 GCM/GRT 通用格式一致）
+  if (s.startsWith('GCQ')) return parseMurataCommon(s, 'GCQ', null);
 
-  return null;
+  // AVX：英制尺寸(4) + 电压码(1) + 介质码(1) + 容量(3) + 容差(1) + 失效率(1) + 端头(1) + 包装(1) + 特殊码(1)
+  // 示例：06035C104K4Z2A → 0603 / 50V / X7R / 100nF / ±10% / 汽车级 / FLEXITERM / 7"卷盘 / 标准品
+  // 必须排在风华之前：风华分支是 return（失败不再往下试）
+  // 区分点：AVX 第 5 位是电压码（6/Z/Y/3/D/5），风华第 5 位是介质字母（B/CG/X/N/C/R/F/S）
+  if (/^\d{4}[6ZY3D512][ACF][\dR]{3}[BCDFGJKM]/.test(s)) return parseAvx(s);
+
+  // 风华 FH / 华新科 Walsin：4位数字开头 + 介质字母(B/CG/X/N/C/R/F)
+  // 两家编码格式完全一致，无法从型号区分，介质码取并集（N=华新科 NP0，皇上报的 70 条失败主因）
+  // 需在村田/国巨/火炬/TDK 之后判断，避免误匹配
+  if (/^\d{4}(B|CG|X|N|C|R|F|S)[\dR]{3}/.test(s)) return parseFenghua(s);
+
+  // 微容自有格式（最后判断：单字母系列前缀过于宽泛，须让所有特定品牌前缀先匹配）
+  // 用于库中无此型号（后缀变体等）时按规格匹配同规格产品
+  return parseViiyong(s);
 }
 
 // 国巨 YAGEO 解析（支持 CC 和 AC 系列）
@@ -409,16 +566,69 @@ function parseSamsung(s) {
   };
 }
 
+// AVX MLCC 解析（皇上 2026-09-08 提供官方码表）
+// 格式：英制尺寸(4) + 电压码(1) + 介质码(1) + 容量码(3) + 容差(1) + 失效率(1) + 端头(1) + 包装(1) + 特殊码(1)
+// 示例：06035C104K4Z2A → 0603 / 50V / X7R / 100nF / ±10% / 汽车级 / FLEXITERM / 7"卷盘 / 标准品
+// ⚠ 必须排在风华之前（风华分支是 return，失败不再往下试）。
+//   区分点：AVX 尺寸后是「电压码 + 介质码」，风华尺寸后直接是介质码
+// ⚠ 电压码 `5` 皇上码表写 100V，但 [实样本] 06035C104K4Z2A 商品目录是 **50V**。
+//   此处以实样本为准落 5=50V；`1`/`2` 因同一处冲突存疑，暂不落（遇则返回 null，不输出错电压）
+function parseAvx(s) {
+  const m = s.match(/^(\d{4})([6ZY3D512])([ACF])([\dR]{3})([BCDFGJKM])([A-Z0-9])([A-Z0-9])([A-Z0-9])([A-Z])$/);
+  if (!m) return null;
+
+  const sizeCode = m[1];
+  const voltCode = m[2];
+  const mediumCode = m[3];
+  const capCode = m[4];
+  const devLetter = m[5];
+  const rateCode = m[6];
+  const termCode = m[7];
+  const packCode = m[8];
+  const specialCode = m[9];
+
+  // 电压码：以 [实样本] 为准，皇上码表从 5 起整体串了一档（表写 5=100V/1=200V/2=500V，实测不符）
+  //   5=50V  [实样本] 06035C104K4Z2A、08055C104K4Z2A（皇上 2026-09-09 再确认）
+  //   3=25V  [实样本] 06033C104K4Z2A
+  //   1=100V [实样本] 06031C104K4Z2A、08051C103K4Z2A
+  //   2=200V [实样本] 12062C104K4Z2A、08052C102K4Z2A
+  // ⚠ 500V 的码未知（原表 2=500V 已被证伪），不落
+  const voltMap = { '6': 6.3, 'Z': 10, 'Y': 16, '3': 25, 'D': 35, '5': 50, '1': 100, '2': 200 };
+
+  // 介质码（皇上只提供这 3 条，其余不猜）
+  const mediumMap = { A: 'C0G', C: 'X7R', F: 'X8R' };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size: sizeCode,
+    temp: mediumMap[mediumCode] || '',
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    failureRate: rateCode === '4' ? '汽车级' : null,
+    termination: AVX_TERM_CODES[termCode] || null,
+    packaging: AVX_PACK_CODES[packCode] || null,
+    special: specialCode === 'A' ? '标准品' : null,
+    raw: s
+  };
+}
+
 // 风华 FH 解析
 // 格式：尺寸(4) + 介质(B/CG/X) + 容量码(3) + 偏差(1字母) + 电压码(3,可含R) + 包装(字母)
 // 示例：0603B101K500NT → 尺寸0603, 介质B(X7R), 容量101(=100pF), 偏差K(±10%), 电压500(=50V)
 //       0402B104K6R3NT → 电压6R3(=6.3V)
 function parseFenghua(s) {
-  const m = s.match(/^(\d{4})(B|CG|X)([\dR]{3})([A-Z])([\dR]{3})[A-Z]*$/);
+  // 华新科 Walsin 与风华 FH 的编码格式完全一致（4位尺寸+介质+容量+容差+电压+端头+包装），
+  // 无法从型号区分厂家，故合并处理，介质码取两家并集（皇上 2026-09-08 提供华新科码表）
+  // 容量码允许 3~4 位：0R82 = 0.82pF（风华小容量 [实样本] 0603CG0R82B500NT，皇上 2026-09-08）
+  const m = s.match(/^(\d{4})(B|CG|X|N|C|R|F|S)([\dR]{3,4})([A-Z])([\dR]{3})[A-Z]*$/);
   if (!m) return null;
 
   const sizeCode = m[1];
-  const mediumCode = m[2];     // B/CG/X
+  const mediumCode = m[2];
   const capCode = m[3];
   const devLetter = m[4];
   const voltCode = m[5];
@@ -426,7 +636,12 @@ function parseFenghua(s) {
   const cap = eiaCodeToPf(capCode);
   if (cap === null) return null;
 
-  const mediumMap = { B: 'X7R', CG: 'C0G', X: 'X5R' };
+  // B=X7R、R=X7R(华新科)、X=X5R(风华)、N=C0G(华新科 NP0)、CG=C0G(风华)、C=X7S、F=Y5V
+  // S=X6S(华新科，皇上 2026-09-08 样本 0402S105K100CT / 0201S104M6R3CT / 0402S106M6R3CT)
+  // ⚠ X 码两家冲突：风华 X=X5R、华新科官方码表 X=X6S。此处沿用风华 X5R，遇到 X 介质的华新科料会判成 X5R
+  const mediumMap = {
+    B: 'X7R', R: 'X7R', X: 'X5R', N: 'C0G', CG: 'C0G', C: 'X7S', F: 'Y5V', S: 'X6S'
+  };
 
   return {
     series: null,
@@ -435,6 +650,94 @@ function parseFenghua(s) {
     size: sizeCode,
     temp: mediumMap[mediumCode] || '',
     volt: eiaCodeToVolt(voltCode),
+    raw: s
+  };
+}
+
+// KEMET（基美）MLCC 解析（皇上 2026-09-08 提供官方码表）
+// 格式：C + 英制尺寸(4) + 系列(1) + 容量码(3) + 容差(1) + 电压码(1) + 介质码(1) + A(1) + 端头(1) + 包装
+// 示例：C0402C330J5GACTU → 0402 / 33pF  / ±5% / 50V / C0G / 100%哑光锡 / TU
+//       C1206C104J3GACTU → 1206 / 0.1µF / ±5% / 25V / C0G
+// ⚠ 与禾伸堂格式高度相似（都 C+4位英制尺寸 开头），靠「电压只有 1 位 + 其后固定 A」区分，分派必须在其之前
+// ⚠ 介质码皇上目前只给了 G=C0G；为不输出错误规格，介质码不在表内一律 return null，不猜
+function parseKemet(s) {
+  const m = s.match(/^C(\d{4})([A-Z])([\dR]{3})([BCDFGJKM])([843521AF])([A-Z])(A)([A-Z])([A-Z0-9]+)$/);
+  if (!m) return null;
+
+  const sizeCode = m[1];
+  const seriesCode = m[2];
+  const capCode = m[3];
+  const devLetter = m[4];
+  const voltCode = m[5];
+  const mediumCode = m[6];
+  const termCode = m[8];
+  const packCode = m[9];
+
+  // 介质码：G=C0G（皇上 2026-09-08 官方码表）；R=X7R（皇上 2026-09-09 [实样本] C0805C104K5RACTU 查证）
+  // 其余介质（X5R/Y5V/Z5U 等）待补，不猜 —— 介质错了会匹配到整批错料
+  const mediumMap = { G: 'C0G', R: 'X7R' };
+  if (!mediumMap[mediumCode]) return null;
+
+  // 电压码
+  const voltMap = { '8': 10, '4': 16, '3': 25, '5': 50, 'F': 100, '1': 100, '2': 200, 'A': 250 };
+
+  // 端头码（皇上只提供 C=100% 哑光锡）
+  const termMap = { C: '100%哑光锡' };
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size: sizeCode,
+    temp: mediumMap[mediumCode],
+    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    termination: termMap[termCode] || null,
+    packaging: packCode,
+    raw: s
+  };
+}
+
+// 三环 CCTC（潮州三环集团）MLCC 解析（皇上 2026-09-08 提供官方码表）
+// 格式：TCC + 英制尺寸(4) + 温度特性(3) + 容量码(3) + 容差(1) + 电压码(3) + 厚度(1) + 包装(1) + 类别(0~1)
+// 示例：TCC0402X7R223K500ATM → 0402 / X7R / 22nF / ±10% / 50V / 0.50mm / 编带 / 汽车级
+//       TCC0603X5R105M160AT   → 0603 / X5R / 1µF  / ±20% / 16V / 编带 / 普通商用级
+// 电压码走 EIA 三位码（500=50V / 250=25V / 160=16V / 100=10V / 101=100V / 201=200V / 501=500V）
+// 厚度码走 THICKNESS_CODES（A=0.50mm / H=1.60mm / Z=0.30mm …）
+function parseSanhuan(s) {
+  const m = s.match(/^TCC(\d{4})(C0G|COG|NPO|X7R|X7S|X7T|X6S|X5R|X8R|Y5V|Z5U)([\dR]{3})([ABCDFGJKMZ])(\d{3})([A-Z])([TB])(M?)$/);
+  if (!m) return null;
+
+  const sizeCode = m[1];
+  let temp = m[2];
+  const capCode = m[3];
+  const devLetter = m[4];
+  const voltCode = m[5];
+  const thickCode = m[6];
+  const packCode = m[7];
+  const gradeCode = m[8];
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  // 皇上码表里 0105 = 0.40×0.20mm，对应英制 01005；其余尺寸码直接是英制
+  const size = sizeCode === '0105' ? '01005' : sizeCode;
+
+  if (temp === 'NPO') temp = 'C0G';
+  if (temp === 'COG') temp = 'C0G';
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp,
+    volt: eiaCodeToVolt(voltCode),
+    thickness: THICKNESS_CODES[thickCode] !== undefined ? THICKNESS_CODES[thickCode] : null,
+    packaging: packCode === 'T' ? '编带' : '散装',
+    grade: gradeCode === 'M' ? '汽车级' : '商用级',
     raw: s
   };
 }
@@ -515,12 +818,8 @@ function parseMurata(s) {
   // 介质码映射
   const mediumMap = { '5C': 'C0G', 'R6': 'X5R', 'R7': 'X7R', 'C7': 'X7S' };
 
-  // 电压码映射
-  const voltMap = {
-    '0G': 4, '0J': 6.3, '0L': 2.5, '1A': 10, '1C': 16, '1E': 25, '1H': 50,
-    '1V': 35, '1K': 80, '2A': 100, '2D': 200, '2E': 250, '2W': 450,
-    '2H': 500, '2J': 630, '2K': 600, '3A': 1000
-  };
+  // 电压码映射：村田全系列共用（见 murataVoltMap）
+  const voltMap = murataVoltMap;
 
   const cap = eiaCodeToPf(capCode);
   if (cap === null) return null;
@@ -568,13 +867,8 @@ function parseTdk(s) {
   let temp = tempCode;
   if (temp === 'NP0') temp = 'C0G';
 
-  // 电压码映射（TDK 标准）
-  const voltMap = {
-    '0G': 4, '0L': 2.5, '0J': 6.3,
-    '1A': 10, '1C': 16, '1E': 25, '1V': 35, '1H': 50, '1K': 80,
-    '2A': 100, '2D': 200, '2E': 250, '2W': 450, '2H': 500, '2K': 600,
-    '3A': 1000, '3B': 1250, '3D': 2000, '3F': 3000
-  };
+  // 电压码映射：TDK CGA/CNA 系列共用（见 tdkVoltMap）
+  const volt = tdkVoltMap[voltCode];
 
   const cap = eiaCodeToPf(capCode);
   if (cap === null) return null;
@@ -585,14 +879,54 @@ function parseTdk(s) {
     dev: devLetterToNorm(devLetter),
     size,
     temp,
-    volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    volt: volt !== undefined ? volt : null,
+    raw: s
+  };
+}
+
+// TDK 东电化 通用 MLCC 系列解析（皇上 2026-09-08 提供官方码表）
+// 格式：C + 公制尺寸(4) + 温度特性(3) + 电压码(2) + 容量码(3) + 容差(1) + 厚度(3) + 包装(1) + 预留(1)
+// 示例：C3216X5R1A107M160AC → 1206 / X5R / 10V / 100µF / ±20% / 1.60mm / 7"卷带
+//       C1005X7R1H102K050BA → 0402 / X7R / 50V / 1nF   / ±10% / 0.50mm / 13"卷带
+// 位置：①C=MLCC ②公制尺寸 ③温度特性 ④电压 ⑤容量 ⑥容差 ⑦厚度(mm×100) ⑧包装 ⑨预留
+// ⚠ 与禾伸堂格式冲突（都以 C+数字 开头）：禾伸堂是「4位英制尺寸 + 1字母介质」，
+//   本系列是「4位公制尺寸 + 3字符温度码」，分派时必须先判本系列。
+function parseTdkGeneral(s) {
+  const m = s.match(/^C(1005|1608|2012|3216|3225|4532|5025|5750|6432|7450)(X5R|X6S|X7R|X7S|X7T|X8R|X8L|X8M|C0G|NP0|NPO|Y5V|Z5U|CH|JB|U2J)([0-9][A-Z])([\dR]{3})([ABCDFGJKMZ])(\d{3})([ABC])([A-Z]?)$/);
+  if (!m) return null;
+
+  const metricCode = m[1];   // 公制尺寸码
+  let temp = m[2];           // 温度特性
+  const voltCode = m[3];     // 2 位电压码
+  const capCode = m[4];      // 容量 EIA 码
+  const devLetter = m[5];    // 容差
+  const thickCode = m[6];    // 厚度（mm × 100）
+  const packCode = m[7];     // 包装
+
+  if (temp === 'NP0' || temp === 'NPO') temp = 'C0G';
+
+  const size = METRIC_TO_INCH[metricCode];
+  if (!size) return null;
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size,
+    temp,
+    volt: tdkVoltMap[voltCode] !== undefined ? tdkVoltMap[voltCode] : null,
+    thickness: parseInt(thickCode, 10) / 100,
+    packaging: TDK_PACK_CODES[packCode] || null,
     raw: s
   };
 }
 
 // 村田 Murata GCM/GRT/GJM 系列 MLCC 解析（共享逻辑）
 // 格式：前缀 + 尺寸(2) + 厚度(1) + 温度特性(2) + 电压(2) + 容量码(3) + 偏差(1字母) + 规格(3) + 包装(1)
-// 示例：GCM155C1H221JA16D  → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
+// 示例：GCM1555C1H221JA16D → 尺寸0402(15), C0G(5C), 50V(1H), 220pF(221), ±5%(J)
 //       GRT155R71H104KE02D  → 尺寸0402(15), X7R(R7), 50V(1H), 100nF(104), ±10%(K)
 //       GJM1555C1H200FB01D  → 尺寸0402(15), C0G(5C), 50V(1H), 20pF(200), ±1%(F)
 // GCM 对应微容 A 系列（车载动力总成/安全），GRT 对应 T 系列（车载信息娱乐/舒适），GJM 无对应系列
@@ -621,12 +955,8 @@ function parseMurataCommon(s, prefix, series) {
     'L8': 'X8L', 'M8': 'X8M', 'N8': 'X8N'
   };
 
-  const voltMap = {
-    '0G': 4, '0L': 2.5, '0J': 6.3,
-    '1A': 10, '1C': 16, '1E': 25, 'YA': 35, '1H': 50, '1K': 80,
-    '2A': 100, '2E': 250, '2W': 450, '2H': 500, '2J': 630, '2K': 600,
-    '3A': 1000, '3D': 2000
-  };
+  // 电压码映射：村田全系列共用（见 murataVoltMap）
+  const voltMap = murataVoltMap;
 
   const cap = eiaCodeToPf(capCode);
   if (cap === null) return null;
@@ -677,13 +1007,8 @@ function parseMurataGcj(s) {
     'C7': 'X7S', 'R7': 'X7R', 'R6': 'X5R', 'C8': 'X6S', 'D7': 'X7T'
   };
 
-  // 电压码映射（村田 GCJ 系列与 GRM 系列电压码相同）
-  const voltMap = {
-    '0G': 4, '0L': 2.5, '0J': 6.3,
-    '1A': 10, '1C': 16, '1E': 25, '1V': 35, '1H': 50, '1K': 80,
-    '2A': 100, '2D': 200, '2E': 250, '2W': 450, '2H': 500, '2J': 630, '2K': 600,
-    '3A': 1000, '3D': 2000
-  };
+  // 电压码映射：村田全系列共用（见 murataVoltMap）
+  const voltMap = murataVoltMap;
 
   const cap = eiaCodeToPf(capCode);
   if (cap === null) return null;
@@ -786,12 +1111,20 @@ function parseHolystone(s) {
     '102': 1000, '202': 2000, '302': 3000, '502': 5000
   };
 
+  // 电压：先查禾伸堂专用表，查不到再回退 EIA 三位码（250→25V、101→100V 等）
+  // 皇上 2026-09-08 反馈 `C1206X226K250NT` 电压解析为空，专用表缺 250 码
+  let volt = voltMap[m[5]];
+  if (volt === undefined) {
+    const ev = eiaCodeToVolt(m[5]);
+    if (ev && ev > 0) volt = ev;
+  }
+
   return {
     series: null, cap,
     dev: devLetterToNorm(m[4]),
     size: sizeMap[m[1]] || '',
     temp: mediumMap[m[2]] || '',
-    volt: voltMap[m[5]] !== undefined ? voltMap[m[5]] : null,
+    volt: volt !== undefined ? volt : null,
     raw: s
   };
 }
@@ -855,7 +1188,6 @@ function parseKyocera(s) {
 function parseTaiyo(s) {
   const m = s.match(/^M([ACBS])(AS|AR|JC|RL)([ALEJTGUHQS])(\d{2})([0-9A-Z])([A-Z])([A-Z]\d)([\dR]{3})([ACDGJKMBF])([A-Z0-9]*)$/);
   if (!m) return null;
-
   const categoryCode = m[1];     // 用途分类(不参与解析)
   const typeCode = m[2];         // 类型(不参与解析)
   const voltCode = m[3];         // 电压码
@@ -892,6 +1224,59 @@ function parseTaiyo(s) {
     cap,
     dev: devLetterToNorm(devLetter),
     size: sizeMap[sizeCode] || '',
+    temp: mediumMap[tempCode] || '',
+    volt: voltMap[voltCode] || null,
+    series: TAIYO_SERIES_MAP['M' + categoryCode + typeCode] || null,
+    raw: s
+  };
+}
+
+// 太阳诱电车规系列 → 微容系列（皇上 2026-09-08 确认：MAAS 车规安全系 → 微容 A 系列）
+// MCAS 属车载车身系/情报系 → 微容 T 系列
+// 注意：系列映射只在「单型号解析」时生效，BOM 批量/多型号匹配会被 mlcc.js 清掉
+const TAIYO_SERIES_MAP = { 'MAAS': 'A', 'MCAS': 'T' };
+
+// 太阳诱电 通用系列（皇上 2026-09-08 提供规则与样本）
+// 格式：{电压码}MK + 尺寸3位 + [厚度码] + 温度码2位 + 容量3位 + 偏差码 + 后缀
+//   JMK212BC6226MG-T → 6.3V / 0805 / X6S / 22µF / ±20%  [实样本]
+//   LMK107B7225KA-TR → 10V  / 0603 / X7R / 2.2µF / ±10% [实样本]
+// 电压码与车规系列同一张表；尺寸是 3 位 JIS 码；厚度码可缺省（LMK107 就没有）
+function parseTaiyoGeneral(s) {
+  const m = s.match(/^([AJLTEGUHQS])MK(\d{3})([A-Z]?)([BCD][567CGKJH])([\dR]{3})([ACDGJKMBFZ])([A-Z0-9-]*)$/);
+  if (!m) return null;
+
+  const voltCode = m[1];
+  const sizeCode3 = m[2];
+  const tempCode = m[4];
+  const capCode = m[5];
+  const devLetter = m[6];
+
+  const cap = eiaCodeToPf(capCode);
+  if (cap === null) return null;
+
+  // 电压码（同车规系列，太阳诱电标准）
+  const voltMap = {
+    'A': 4, 'J': 6.3, 'L': 10, 'E': 16, 'T': 25,
+    'G': 35, 'U': 50, 'H': 100, 'Q': 250, 'S': 630
+  };
+
+  // 尺寸 3 位 JIS 码 → EIA inch 码（皇上 2026-09-08 提供）
+  const sizeMap3 = {
+    '021': '008004', '042': '01005', '063': '0201', '105': '0402',
+    '107': '0603', '212': '0805', '316': '1206', '325': '1210', '432': '1812'
+  };
+
+  // 温度特性码（同车规系列）
+  const mediumMap = {
+    'B5': 'X5R', 'C6': 'X6S', 'B7': 'X7R', 'C7': 'X7S',
+    'D7': 'X7T', 'CG': 'C0G', 'CH': 'C0H', 'CJ': 'C0J', 'CK': 'C0K'
+  };
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(devLetter),
+    size: sizeMap3[sizeCode3] || '',
     temp: mediumMap[tempCode] || '',
     volt: voltMap[voltCode] || null,
     raw: s
@@ -1352,9 +1737,12 @@ function parseDescLoose(desc) {
   let matchedText = '';
 
   // 1. 提取容量（带单位，优先匹配长单位 pF/nF/uF/µF/mF，再匹配单字母 p/n/u/µ）
-  const capMatch = text.match(/([0-9.]+)\s*(pF|nF|uF|µF|mF)/i) || text.match(/([0-9.]+)\s*(p|n|u|µ)\b/i);
+  // 容量数字前必须是词边界（不能紧跟字母数字），避免把纯型号串的尾码误读为容量
+  // （如 A475K1206X7R250N1P 的尾码 N1P 曾被误读为 1pF，导致匹配出全库 1pF 产品）
+  const capMatch = text.match(/(^|[^A-Za-z0-9.])([0-9.]+)\s*(pF|nF|uF|µF|mF)/i)
+    || text.match(/(^|[^A-Za-z0-9.])([0-9.]+)\s*(p|n|u|µ)\b/i);
   if (capMatch) {
-    const v = capToPf(capMatch[1] + capMatch[2]);
+    const v = capToPf(capMatch[2] + capMatch[3]);
     if (v !== null) {
       cap = v;
       matchedText += capMatch[0] + ' ';

@@ -80,9 +80,9 @@ const cases = [
   { input: 'RC0402FR-07100RL', expect: 'RMF04FT1000', note: '皇上锚点：RES,100Ω,±1%,1/16W,SMD0402 → RMF04FT1000 (E-96: 100×10^0)' },
   { input: 'AF0402FR-0710KL', expect: 'RMS04FT1002', note: '国巨 AF 抗硫化 0402 ±1% 10K' },
   { input: 'SR1206FR-0710KL', expect: 'RAS12FT1002', note: '国巨 SR 抗浪涌 1206 ±1% 10K' },
-  { input: 'PE0402FR-070R05L', expect: 'RLM04FT0R05', note: '国巨 PE 电流检测 0402 ±1% 0.05Ω' },
-  { input: 'PE1206FR-070R005L', expect: 'RLM12FT0R005', note: '5mΩ 非 EBR 系列：<0.01Ω 大毅写法无锚点，回退原码 + warning（不得输出 0R01）' },
-  { input: 'PA2512FR-070R002L', expect: 'RLP25FT0R002', note: '2mΩ 非 EBR 系列：同上回退（不得输出 0R00）' },
+  { input: 'PE0402FR-070R05L', expect: 'RLM04FTR050', note: '国巨 PE 电流检测 0402 ±1% 0.05Ω；RLM 属合金族，按 RLM12FTCMR020 锚点用 R050 写法' },
+  { input: 'PE1206FR-070R005L', expect: 'RLM12FTR005', note: '5mΩ：RLM 属合金族，可编码到 0.001Ω（R005），不再是"无锚点回退"' },
+  { input: 'PA2512FR-070R002L', expect: 'RLP25FTR002', note: '2mΩ：RLP 属合金族，按皇上 2026-09-08 锚点 RLPL12FEGMR002 改为 R002 写法' },
   { input: 'PU2512FKEQ10KL', expect: null, note: '国巨 PU 合金型号格式特殊，本轮不实现' },
 
   // ============================================================
@@ -175,12 +175,43 @@ const cases = [
   { input: 'RMF04JT472', expect: 'RMF04JT472', note: '反解：厚膜 0402 ±5% 4.7K（E-24）' },
   { input: 'RMF04FT22R0', expect: 'RMF04FT22R0', note: '反解：22Ω（R 在非 EBR 里是 Ω）' },
   { input: 'RMF04JT0', expect: 'RMF04JT0', note: '反解：0Ω' },
-  { input: 'RLM04FT0R05', expect: 'RLM04FT0R05', note: '反解：电流检测 0.05Ω' },
+  { input: 'RLM04FTR050', expect: 'RLM04FTR050', note: '反解：电流检测 0.05Ω（合金族 R+3位写法）' },
+  // RLM / RMS（皇上 2026-09-08 [实样本]）
+  { input: 'RLM12FTCMR020', expect: 'RLM12FTCMR020', note: '[实样本] 反解：1206 ±1% 纸带 C(1W) M(锰铜) R020(20mΩ)' },
+  // RLM 官方命名规则（皇上 2026-09-08）：功率码 B=1/8W / A=1/4W / S=1/2W，包装码 I 或 T
+  { input: 'RLM10FTSMR010', expect: 'RLM10FTSMR010', note: '[实样本] 反解：0805 ±1% 纸带 S(1/2W) M(锰铜) R010(10mΩ)' },
+  { input: 'RLM10FTSMR005', expect: 'RLM10FTSMR005', note: '[实样本] 反解：0805 1/2W 锰铜 5mΩ' },
+  { input: 'RLM10FTSMR003', expect: 'RLM10FTSMR003', note: '反解：0805 1/2W 锰铜 3mΩ（官方规则示例）' },
+  { input: 'RLM10FISMR003', expect: 'RLM10FISMR003', note: '反解：包装码 I（官方规则示例），其余同 RLM10FTSMR003' },
+  { input: 'RMS12FT2R70', expect: 'RMS12FT2R70', note: '[实样本] 反解：1206 厚膜 2.7Ω ±1% 250mW' },
+  { input: 'RMS12JT155', expect: 'RMS12JT155', note: '[实样本] 反解：1206 厚膜 1.5MΩ ±5%（E-24 155）' },
   { input: 'RMS04FT1002', expect: 'RMS04FT1002', note: '反解：抗硫化系列' },
   { input: 'RAS12FT1002', expect: 'RAS12FT1002', note: '反解：抗浪涌系列' },
   { input: 'RES,10KΩ,±1%,1/16W,SMD0402,大毅,RMF04FT1002', expect: 'RMF04FT1002', note: '反解：从规格描述中提取大毅型号' },
+  // RMH 高功率厚膜（皇上 2026-09-07 提供，[实样本]）
+  { input: 'RMH25FE2R70', expect: 'RMH25FE2R70', note: '[实样本] 反解：2512 2W 2.7Ω ±1%，E 包装（编带）' },
+  // RLPL / RLP 大功率合金：包装码后还有功率位(G=3W)与材料位(M=MnCu)，RLPL 的 L12=1225
+  // （皇上 2026-09-08 提供 [实样本]）
+  { input: 'RLPL12FEGMR010', expect: 'RLPL12FEGMR010', note: '[实样本] 反解：1225 3W 锰铜 10mΩ，12=1225 非 1206' },
+  { input: 'RLPL12FEGMR002', expect: 'RLPL12FEGMR002', note: '[实样本] 反解：1225 3W 锰铜 2mΩ' },
+  { input: 'RLPL12FEGMR040', expect: 'RLPL12FEGMR040', note: '反解：1225 3W 锰铜 40mΩ（R040=0.040Ω）' },
+  { input: 'RLP25FEGR010', expect: 'RLP25FEGR010', note: '[实样本] 反解：2512 3W 10mΩ，无材料位' },
   { input: 'RMF99FT1002', expect: null, note: '反解：尺寸码 99 不存在 → 报错' },
   { input: 'XYZ04FT1002', expect: null, note: '反解：非大毅系列 → 无法识别' },
+
+  // ============================================================
+  // PROSEMI LMJ / SRC 系列（皇上 2026-09-08 真值表）
+  // LMJ 阻值 R 是 Ω 语义；SRC 阻值 R 是 mΩ 语义（两套相反）
+  // ============================================================
+  // ✅ 有实锚点：PROSEMI 与大毅同规格样本已对上
+  { input: 'LMJ08MF0P5R005', expect: 'RLM10FTSMR005', note: '[实样本] LMJ 0805 0.5W 5mΩ 锰铜 ↔ 大毅 RLM10FTSMR005 同规格' },
+  { input: 'LMJ12MF1P0R010', expect: 'RLM12FTCMR010', note: '[实样本] LMJ 1206 1W 10mΩ 锰铜 ↔ 大毅 RLM12 同系列同功率' },
+  { input: 'LMJ12MF1P0R020', expect: 'RLM12FTCMR020', note: '[实样本] 大毅 RLM12FTCMR020 即为此规格' },
+  // ⚠ 推测：尺寸对应明确，但系列映射无同规格大毅样本佐证
+  { input: 'LMJ25NF2P0R002', expect: 'RLP25FEER002', note: '[推测] LMJ 2512 2W 2mΩ 镍铜 → RLP25；镍铜无大毅材料码，留空' },
+  { input: 'SRC25FFD5R0', expect: 'RLP25FEDR005', note: '[推测] SRC 2512 1.5W 5mΩ 镍铜 → RLP25 + D(1.5W)' },
+  { input: 'SRC39MFI0R50', expect: 'EBR39FER50M', note: '[推测] SRC 3920 0.5mΩ → EBR39；EBR 无功率位，功率查表 9W ≠ 源 5W' },
+  { input: 'SRC59MFA0R50', expect: 'EBR59FER50M', note: '[推测] SRC 5930 0.5mΩ → EBR59；查表 10W ≠ 源 7W' },
 
   // ============================================================
   // 边界
@@ -188,47 +219,73 @@ const cases = [
   { input: 'INVALID123', expect: null, note: '无效输入' }
 ];
 
-let pass = 0, fail = 0;
-for (const c of cases) {
-  const result = matchResistorToDayi(c.input);
-  const actualModel = result && result.ok ? result.dayiModel : null;
-  const ok = actualModel === c.expect;
-  if (ok) pass++; else fail++;
-  const tag = ok ? 'PASS' : 'FAIL';
-
-  console.log('[' + tag + '] ' + c.input.padEnd(20) + ' -> ' + (actualModel || '(null)') + ' (expect: ' + c.expect + ')  [' + c.note + ']');
-  if (!ok && result && result.ok) {
-    console.log('       spec:', JSON.stringify({
-      brand: result.brand, prefix: result.prefix,
-      size: result.size, sizeCode: result.sizeCode,
-      tol: result.tol, tolCode: result.tolCode,
-      resistance: result.resistanceFormatted, resCode: result.resistanceCode,
-      dayiSeries: result.dayiSeries, dayiResCode: result.dayiResCode,
-      dayiTolCode: result.dayiTolCode,
-      warnings: result.warnings
-    }, null, 2));
-  }
-}
-
-// ============================================================
-// 反解回环：把上面每条用例产出的大毅型号再喂回去，
-// 反解 → 重新编码 → 必须逐字节还原。这是反解实现正确性的硬判据。
-// ============================================================
-console.log('\n=== 反解回环（大毅自家型号自洽性）===');
+// 大毅自家型号去重集合（回环自检用）
 const dayiModels = [...new Set(cases.map((c) => c.expect).filter(Boolean))];
-let loopPass = 0, loopFail = 0;
-for (const model of dayiModels) {
-  const r = matchResistorToDayi(model);
-  const back = r && r.ok ? r.dayiModel : null;
-  if (back === model) {
-    loopPass++;
-  } else {
-    loopFail++;
-    console.log('[FAIL] ' + model + ' -> ' + back + (r && r.error ? ' (' + r.error + ')' : ''));
-  }
-}
-console.log('回环: ' + loopPass + ' PASS, ' + loopFail + ' FAIL / ' + dayiModels.length + ' 个大毅型号');
-fail += loopFail;
 
-console.log('\n总计: ' + (pass + loopPass) + ' PASS, ' + fail + ' FAIL / ' + (cases.length + dayiModels.length));
-process.exit(fail > 0 ? 1 : 0);
+function runTests() {
+  let pass = 0, fail = 0;
+  for (const c of cases) {
+    const result = matchResistorToDayi(c.input);
+    const actualModel = result && result.ok ? result.dayiModel : null;
+    const ok = actualModel === c.expect;
+    if (ok) pass++; else fail++;
+    const tag = ok ? 'PASS' : 'FAIL';
+
+    console.log('[' + tag + '] ' + c.input.padEnd(20) + ' -> ' + (actualModel || '(null)') + ' (expect: ' + c.expect + ')  [' + c.note + ']');
+    if (!ok && result && result.ok) {
+      console.log('       spec:', JSON.stringify({
+        brand: result.brand, prefix: result.prefix,
+        size: result.size, sizeCode: result.sizeCode,
+        tol: result.tol, tolCode: result.tolCode,
+        resistance: result.resistanceFormatted, resCode: result.resistanceCode,
+        dayiSeries: result.dayiSeries, dayiResCode: result.dayiResCode,
+        dayiTolCode: result.dayiTolCode,
+        warnings: result.warnings
+      }, null, 2));
+    }
+  }
+
+  console.log('\n=== 反解回环（大毅自家型号自洽性）===');
+  let loopPass = 0, loopFail = 0;
+  for (const model of dayiModels) {
+    const r = matchResistorToDayi(model);
+    const back = r && r.ok ? r.dayiModel : null;
+    if (back === model) {
+      loopPass++;
+    } else {
+      loopFail++;
+      console.log('[FAIL] ' + model + ' -> ' + back + (r && r.error ? ' (' + r.error + ')' : ''));
+    }
+  }
+  console.log('回环: ' + loopPass + ' PASS, ' + loopFail + ' FAIL / ' + dayiModels.length + ' 个大毅型号');
+  fail += loopFail;
+
+  // EBR 功率查表（皇上 2026-09-08 官方规格表：EBR 型号无功率位，功率由尺寸+阻值查表）
+  console.log('\n=== EBR 额定功率查表 ===');
+  const ebrPowerCases = [
+    { input: 'EBR25FER30M', power: '6W', note: '[实样本] 2512 0.3mΩ → 6W（皇上商品目录核对）' },
+    { input: 'EBR25FER50M', power: '6W', note: '2512 0.5mΩ → 6W' },
+    { input: 'EBR25FER005', power: '3W', note: '2512 5mΩ → 3W（功率随阻值下降）' },
+    { input: 'EBR39FER001', power: '8W', note: '3920 1mΩ → 8W' },
+    { input: 'EBR59FER10M', power: '15W', note: '5930 0.1mΩ → 15W' }
+  ];
+  for (const c of ebrPowerCases) {
+    const r = matchResistorToDayi(c.input);
+    if (r && r.power === c.power) {
+      loopPass++;
+    } else {
+      loopFail++;
+      console.log('[FAIL] ' + c.input + ' 功率 ' + (r && r.power) + ' != ' + c.power + '  ' + c.note);
+    }
+  }
+  console.log('EBR 功率: ' + ebrPowerCases.length + ' 条抽查完成');
+  fail += loopFail;
+
+  console.log('\n总计: ' + (pass + loopPass) + ' PASS, ' + fail + ' FAIL / ' + (cases.length + dayiModels.length + ebrPowerCases.length));
+  return { pass, fail, loopPass, loopFail };
+}
+
+// 导出真实用例，供 scripts/resistor.js --roundtrip 复用（禁止用虚构型号做回环）
+module.exports = { cases, dayiModels, runTests };
+
+if (require.main === module) process.exit(runTests().fail > 0 ? 1 : 0);

@@ -15,7 +15,8 @@ const SIZE_TO_DAYI = {
   '0201': '02', '0402': '04', '0603': '06',
   '0805': '10', '1206': '12', '1210': '13',
   '2010': '20', '2512': '25',
-  '3920': '39', '5930': '59'
+  '3920': '39', '5930': '59',
+  '1225': '12'
 };
 
 // 大毅尺寸码 → 英制（反向表，PROSEMI 等直接用 2 位码的厂家用）
@@ -24,6 +25,12 @@ const DAYI_SIZE_TO_INCH = {
   '10': '0805', '12': '1206', '13': '1210',
   '20': '2010', '25': '2512',
   '39': '3920', '59': '5930'
+};
+
+// 系列专属尺寸码覆盖（皇上 2026-09-08 拍板：RLPL 的 L12 = 1225，非 1206）
+// RLPL 是长边电极大功率料，1225 才合理；其余系列的 12 仍为 1206
+const SERIES_SIZE_OVERRIDE = {
+  RLPL: { '12': '1225' }
 };
 
 // KOA 尺寸码 → 英制
@@ -104,8 +111,55 @@ const SERIES_MAP = {
 const EBR_SIZE_CODES = ['25', '39', '59'];
 const EBR_TOL_CODES = ['F', 'G', 'J'];
 
-// 大毅自家系列（反解白名单，均为 3 字母）
-const DAYI_SERIES = ['RMF', 'RMS', 'RAS', 'RLM', 'RLP', 'RLS', 'RHS', 'EBR', 'PBR'];
+// 大毅自家系列（反解白名单，3~4 字母）
+// RMH = 高功率厚膜，皇上 2026-09-07 样本 RMH25FE2R70（2512 / 2W / 2.7Ω / ±1% / -55~155℃）
+// RLPL = 长边电极大功率合金，皇上 2026-09-08 样本 RLPL12FEGMR010（1225 / 3W / 锰铜 / 10mΩ）
+const DAYI_SERIES = ['RMF', 'RMS', 'RAS', 'RLM', 'RLP', 'RLS', 'RHS', 'RMH', 'EBR', 'PBR', 'RLPL'];
+// 交替匹配必须长系列在前，否则 RLPL 会被 RLP 抢走（JS 正则最左优先）
+const DAYI_SERIES_PATTERN = [...DAYI_SERIES].sort((a, b) => b.length - a.length).join('|');
+
+// 额定功率码（位于包装码之后、阻值码之前）
+// ⚠ 各系列档位不同，同一字母在不同系列可能不同义，出货前必须回该系列 Datasheet 核对：
+//   RLM（皇上 2026-09-08 官方命名规则）：B=1/8W、A=1/4W、S=1/2W；RLM12 实测 C=1W
+//   RLP/RLPL（皇上 2026-09-07）：C=1W、D=1.5W、E=2W、G=3W
+const POWER_CODES = {
+  B: '1/8W', A: '1/4W', S: '1/2W',
+  C: '1W', D: '1.5W', E: '2W', G: '3W'
+};
+// EBR 功率查表（皇上 2026-09-08 官方规格表）
+// EBR 型号里**没有功率位**，功率由「尺寸 + 阻值」唯一决定，只能查表得出。
+// 单位：阻值 mΩ、功率 W。表外阻值不猜，返回 null。
+const EBR_POWER_TABLE = {
+  '25': [[0.2, 6], [0.3, 6], [0.5, 6], [1, 6], [2, 6], [3, 4], [4, 4], [5, 3]],
+  '39': [[0.2, 12], [0.3, 10], [0.5, 9], [0.7, 8], [1, 8], [2, 6], [3, 5], [4, 5], [5, 5]],
+  '59': [[0.1, 15], [0.2, 15], [0.3, 10], [0.5, 10], [0.75, 10], [1, 9], [2, 7], [3, 7]]
+};
+
+// 按 EBR 尺寸码 + 阻值(Ω) 查额定功率，返回 '6W' 这类字符串；查不到返回 null
+function lookupEbrPower(sizeCode, ohm) {
+  const rows = EBR_POWER_TABLE[sizeCode];
+  if (!rows || !isFinite(ohm)) return null;
+  const mr = ohm * 1000;
+  const hit = rows.find(([r]) => Math.abs(r - mr) < 1e-6);
+  return hit ? hit[1] + 'W' : null;
+}
+
+// 材料码（位于功率码之后、阻值码之前）
+const MATERIAL_CODES = { M: 'MnCu锰铜' };
+// 带功率位的系列（其余系列如 RMH/RMS 的阻值码直接跟在包装码后）
+// RLM 已确认：[实样本] RLM12FTCMR020 = 1206 ±1% 纸带 C(1W) M(锰铜) R020(20mΩ)（皇上 2026-09-08）
+const POWER_CODE_SERIES = ['RLM', 'RLP', 'RLPL'];
+// 型号里带【材料位】的系列（RLM/RLPL 有 M=锰铜；RLP/EBR 无材料位，禁止拼接）
+const MATERIAL_CODE_SERIES = ['RLM', 'RLPL'];
+
+// 电流检测/合金族：<1Ω 的阻值码用 R + 3 位小数（无前导 0），与厚膜系列的 0R05 写法不同
+// 锚点：RLM12FTCMR020 / RLP25FEGR010 / RLPL12FEGMR002（均为皇上 [实样本]）
+const ALLOY_R_SERIES = ['RLM', 'RLP', 'RLPL'];
+
+// 已确认用 E（编带）包装的系列；其余系列一律默认 T（纸带）
+//   EBR：皇上 2026-09-04 锚点 EBR59FER50M
+//   RMH：皇上 2026-09-07 样本 RMH25FE2R70 [仅一条样本，RMH 全系列是否通用 E 待皇上确认]
+const E_PACK_SERIES = ['EBR', 'RMH'];
 
 // ============================================================
 // 工具函数
@@ -127,10 +181,10 @@ function parseResistance(code) {
     return { value: 0, formatted: '0Ω', digits: 3, code: '0' };
   }
 
-  // 带 R 小数点：0R05 / 43R2 / 100R
-  const rm = s.match(/^(\d+)R(\d*)$/);
-  if (rm) {
-    const v = parseFloat(rm[1] + (rm[2] ? '.' + rm[2] : ''));
+  // 带 R 小数点：0R05 / 43R2 / 100R / R010（R010 = 0.010Ω，R 前可无数字，大毅 RLP/RLPL 合金料常见）
+  const rm = s.match(/^(\d*)R(\d*)$/);
+  if (rm && (rm[1] !== '' || rm[2] !== '')) {
+    const v = parseFloat((rm[1] || '0') + (rm[2] ? '.' + rm[2] : ''));
     // digits 按字符长度归 3 或 4：>=4 字符按 4 位
     const digits = s.length >= 4 ? 4 : 3;
     return { value: v, formatted: formatOhm(v), digits, code: s };
@@ -216,7 +270,7 @@ function resistanceToDayiCode(value, tolCode, series) {
   if (series === 'EBR' && v < 1) return encodeMilliohm(v);
   const digits = TOL_TO_DIGITS[tolCode] || 3;
   if (digits === 3) return encodeE24(v);
-  return v >= 100 ? encodeE96(v) : encodeR4(v);
+  return v >= 100 ? encodeE96(v) : encodeR4(v, series);
 }
 
 // E-24 标准阻值序列（大毅/国巨产品库只含标准值）
@@ -264,12 +318,18 @@ function encodeE96(v) {
 }
 
 // R 表示法（仅 < 100Ω 段），总字符数补齐 4 位
-//   v<10  : 两位小数  1→1R00、2.2→2R20、3.3→3R30、0.05→0R05
-//   v<100 : 一位小数  10→10R0、22→22R0、62→62R0、99.9→99R9
-//   v<0.01: 两位小数不够（0.005→0R01、0.002→0R00 全是错值），
-//            大毅该段写法无锚点，故返回 null 让调用方回退原码 + warning，不猜
-function encodeR4(v) {
-  if (v < 0.01) return null;
+//   v<1 且系列为 RLP/RLPL（有实锚点，皇上 2026-09-08 样本）：
+//           R + 三位小数，无前导 0 —— R010=0.010Ω、R040=0.040Ω、R002=0.002Ω
+//   v<1 其余系列：沿用带前导 0 的旧写法 0R05（无锚点，不改）
+//   v<0.001（RLP/RLPL）或 v<0.01（其余系列）：精度不够，返回 null 让调用方回退原码 + warning
+function encodeR4(v, series) {
+  const alloyForm = ALLOY_R_SERIES.includes(series);
+  if (alloyForm) {
+    if (v < 0.001) return null;
+    if (v < 1) return 'R' + String(Math.round(v * 1000)).padStart(3, '0');
+  } else if (v < 0.01) {
+    return null;
+  }
   const s = v < 10 ? v.toFixed(2) : v.toFixed(1);
   return s.replace('.', 'R');
 }
@@ -458,6 +518,98 @@ function parseProsemiResistor(s) {
   });
 }
 
+// ------------------------------------------------------------
+// PROSEMI 普罗森美 LMJ / SRC 系列（皇上 2026-09-08 提供真值表）
+// ------------------------------------------------------------
+// LMJ：LMJ{尺寸}{材料}{精度}{功率}{阻值}   阻值 R 是【Ω 语义】小数点
+//   LMJ08MF0P5R005 → 0805 锰铜 ±1% 0.5W  0.005Ω(5mΩ)
+//   LMJ12MF1P0R010 → 1206 锰铜 ±1% 1.0W  0.010Ω(10mΩ)
+//   材料：M=锰铜、N=镍铜；功率形如 0P5/1P0/2P0（P 是小数点）
+// SRC：SRC{尺寸}{材料}{精度}{功率}{阻值}   阻值 R 是【mΩ 语义】小数点（与 LMJ 相反！）
+//   SRC39MFI0R50 → 3920 锰铜 ±1% 5W   0.50mΩ
+//   SRC25FFD5R0  → 2512 镍铜 ±1% 1.5W 5.0mΩ
+//   材料：M=锰铜、F=镍铜；功率码 I=5W / E=2W / H=3W / F=2.5W / P=4W / A=7W / D=1.5W
+const SRC_POWER_CODES = { D: 1.5, F: 2.5, E: 2, H: 3, P: 4, I: 5, A: 7 };
+
+// PROSEMI 尺寸码 → 大毅系列 + 英制（皇上样本反推；LMJ25/SRC25→RLP、SRC39/59→EBR 为推测，输出时标注）
+const PROSEMI_TARGET = {
+  '08': { size: '0805', series: 'RLM' },
+  '12': { size: '1206', series: 'RLM' },
+  '25': { size: '2512', series: 'RLP' },
+  '39': { size: '3920', series: 'EBR' },
+  '59': { size: '5930', series: 'EBR' }
+};
+
+// 大毅功率码（按系列分档， watt 为数值）
+const DAYI_POWER_BY_SERIES = {
+  RLM: [{ w: 0.125, c: 'B' }, { w: 0.25, c: 'A' }, { w: 0.5, c: 'S' }, { w: 1, c: 'C' }],
+  RLP: [{ w: 1, c: 'C' }, { w: 1.5, c: 'D' }, { w: 2, c: 'E' }, { w: 3, c: 'G' }],
+  RLPL: [{ w: 1, c: 'C' }, { w: 1.5, c: 'D' }, { w: 2, c: 'E' }, { w: 3, c: 'G' }]
+};
+
+function dayiPowerCode(series, watt) {
+  const rows = DAYI_POWER_BY_SERIES[series];
+  if (!rows || !isFinite(watt)) return null;
+  const hit = rows.find((r) => Math.abs(r.w - watt) < 1e-9);
+  return hit ? hit.c : null;
+}
+
+function parseProsemiLmj(s) {
+  const u = String(s).trim().toUpperCase();
+  const m = u.match(/^LMJ(\d{2})([MN])([FGJ])(\dP\d)(R[0-9A-Z]+)$/);
+  if (!m) return null;
+  const [, sizeCode, matCode, tolCode, powCode, resCode] = m;
+  const t = PROSEMI_TARGET[sizeCode];
+  if (!t) return null;
+  // 阻值：R 是小数点，单位 Ω —— 0.005Ω = 5mΩ
+  const ohm = parseFloat(resCode.replace('R', '0.'));
+  if (!isFinite(ohm)) return null;
+  const watt = parseFloat(powCode.replace('P', '.'));
+  const powerCode = dayiPowerCode(t.series, watt);
+  const warnings = [];
+  if (!powerCode) warnings.push(`大毅 ${t.series} 无 ${watt}W 功率档，型号中功率位留空，需人工核对`);
+  // 材料：只有锰铜有确认码 M；镍铜的大毅码未知，按皇上"没有写就不用在意"留空
+  const materialCode = matCode === 'M' ? 'M' : null;
+  if (matCode !== 'M') warnings.push('PROSEMI 镍铜材料对应大毅码未知，材料位留空，需人工核对');
+  return makeSpec({
+    brand: 'prosemi', model: s, prefix: 'LMJ', size: t.size, tolCode,
+    resistance: { value: ohm, formatted: formatOhm(ohm), digits: 4, code: resCode },
+    packaging: t.series === 'RLP' ? 'E' : 'T',
+    dayiSeriesOverride: t.series, powerCode, materialCode,
+    warning: warnings.length ? warnings.join('；') : null
+  });
+}
+
+function parseProsemiSrc(s) {
+  const u = String(s).trim().toUpperCase();
+  const m = u.match(/^SRC(\d{2})([MFN])([FGJ])([A-Z])(\dR[0-9A-Z]+)$/);
+  if (!m) return null;
+  const [, sizeCode, matCode, tolCode, powCode, resCode] = m;
+  const t = PROSEMI_TARGET[sizeCode];
+  if (!t) return null;
+  // 阻值：R 是小数点，单位 mΩ —— 0R50 = 0.50mΩ
+  const mr = parseFloat(resCode.replace('R', '.'));
+  if (!isFinite(mr)) return null;
+  const ohm = mr / 1000;
+  const watt = SRC_POWER_CODES[powCode];
+  const warnings = [];
+  if (watt === undefined) warnings.push(`PROSEMI 功率码 ${powCode} 含义未知，无法换算功率`);
+  // EBR 无功率位；RLP 按档位取码
+  const powerCode = t.series === 'EBR' ? null : dayiPowerCode(t.series, watt);
+  if (t.series !== 'EBR' && watt !== undefined && !powerCode) {
+    warnings.push(`大毅 ${t.series} 无 ${watt}W 功率档，型号中功率位留空，需人工核对`);
+  }
+  const materialCode = matCode === 'M' ? 'M' : null;
+  if (matCode !== 'M') warnings.push('PROSEMI 镍铜材料对应大毅码未知，材料位留空，需人工核对');
+  return makeSpec({
+    brand: 'prosemi', model: s, prefix: 'SRC', size: t.size, tolCode,
+    resistance: { value: ohm, formatted: formatOhm(ohm), digits: 4, code: resCode },
+    packaging: t.series === 'EBR' ? 'E' : (t.series === 'RLP' ? 'E' : 'T'),
+    dayiSeriesOverride: t.series, powerCode, materialCode, srcPower: watt,
+    warning: warnings.length ? warnings.join('；') : null
+  });
+}
+
 // ============================================================
 // 大毅自家型号反解（皇上 2026-09-04 批准）
 // ============================================================
@@ -486,16 +638,36 @@ function parseDayiMilliohm(code) {
 function parseDayiResistor(s) {
   if (!s) return null;
   const u = s.trim().toUpperCase();
-  const m = u.match(new RegExp('^(' + DAYI_SERIES.join('|') + ')(\\d{2})([FGJDBACK])([TE])([0-9A-Z]+)$'));
+  const m = u.match(new RegExp('^(' + DAYI_SERIES_PATTERN + ')(\\d{2})([FGJDBACK])([TEI])([0-9A-Z]+)$'));
   if (!m) return null;
-  const [, series, sizeCode, tolCode, packaging, resCode] = m;
-  const sizeInch = DAYI_SIZE_TO_INCH[sizeCode];
+  const [, series, sizeCode, tolCode, packaging, rest] = m;
+  // 尺寸码按系列覆盖：RLPL 的 12 = 1225，其余系列走通用表
+  const sizeInch = (SERIES_SIZE_OVERRIDE[series] && SERIES_SIZE_OVERRIDE[series][sizeCode])
+    || DAYI_SIZE_TO_INCH[sizeCode];
   if (!sizeInch) return null;
+
+  // 功率位/材料位剥离：RLP/RLPL 在包装码与阻值码之间还有 {功率}{材料?}
+  //   RLM10FT S M R010     → 1/2W, 锰铜, 10mΩ（皇上 2026-09-08 [实样本]）
+  //   RLPL12FE G M R010    → 3W, 锰铜, 10mΩ
+  // 功率码字符集含 B/A/S（RLM 小功率档），阻值码只以数字或 R 开头，不会误吞
+  let powerCode = null;
+  let materialCode = null;
+  let resCode = rest;
+  if (POWER_CODE_SERIES.includes(series)) {
+    const pm = rest.match(/^([CDEGBAS])(M?)([0-9A-Z]+)$/);
+    if (pm) {
+      powerCode = pm[1];
+      materialCode = pm[2] || null;
+      resCode = pm[3];
+    }
+  }
+
   const res = series === 'EBR' ? parseDayiMilliohm(resCode) : parseResistance(resCode);
   if (!res) return null;
   return makeSpec({
     brand: 'dayi', model: s, prefix: series, size: sizeInch, tolCode,
-    resistance: res, packaging, dayiSeriesOverride: series
+    resistance: res, packaging, dayiSeriesOverride: series,
+    powerCode, materialCode
   });
 }
 
@@ -503,8 +675,12 @@ function parseDayiResistor(s) {
 // 统一分派 + 规格构造
 // ============================================================
 
-function makeSpec({ brand, model, prefix, size, tolCode, resistance, packaging, warning, dayiSeriesOverride }) {
-  const sizeCode = size ? (SIZE_TO_DAYI[size] || null) : null;
+function makeSpec({ brand, model, prefix, size, tolCode, resistance, packaging, warning, dayiSeriesOverride, powerCode, materialCode, srcPower }) {
+  const seriesOverride = dayiSeriesOverride;
+  // 尺寸码按系列覆盖：RLPL 的 1225 编为 12，其余走通用表
+  const sizeCode = (seriesOverride && SERIES_SIZE_OVERRIDE[seriesOverride] && size
+    && Object.keys(SERIES_SIZE_OVERRIDE[seriesOverride]).find(k => SERIES_SIZE_OVERRIDE[seriesOverride][k] === size))
+    || (size ? (SIZE_TO_DAYI[size] || null) : null);
   const tol = TOL_MAP[tolCode] || null;
   const dayiSeries = dayiSeriesOverride || pickDayiSeries(brand, prefix);
   return {
@@ -522,6 +698,11 @@ function makeSpec({ brand, model, prefix, size, tolCode, resistance, packaging, 
     resistanceDigits: resistance.digits,
     requiredDigits: TOL_TO_DIGITS[tolCode] || null,
     packaging,           // T=纸带
+    powerCode: powerCode || null,        // 额定功率码 C/D/E/G（仅 RLP/RLPL 等有）
+    power: powerCode ? (POWER_CODES[powerCode] || null) : null,
+    materialCode: materialCode || null,  // 材料码 M=MnCu 锰铜
+    material: materialCode ? (MATERIAL_CODES[materialCode] || null) : null,
+    srcPower: srcPower || null,      // 源厂商标称功率(W)，用于与大毅查表功率比对
     dayiSeries,          // RMF / RMS / RAS / ...
     warning: warning || null
   };
@@ -554,7 +735,7 @@ function extractModelCandidates(text) {
     if (token) push(token);
   }
   const re = new RegExp('(CRCW|RCA|WSLT|WSLP|WSLF|WSL|WSK|APSRP|'
-    + DAYI_SERIES.join('|') + '|'
+    + DAYI_SERIES_PATTERN + '|'
     + 'RK73[BHG](?:-RT)?|TLR|TSL|SLN|BLR|PSJ|PSL|PSG|MCR|AC|RC|RT|AF|SR|AR|PE|PA|PU|AH)[0-9A-Za-z-]*', 'g');
   let m;
   while ((m = re.exec(String(text))) !== null) {
@@ -576,12 +757,21 @@ function dispatchResistorParser(s) {
   if (!s) return null;
   const u = s.trim().toUpperCase();
   // 大毅自家型号（3 字母系列，与他牌前缀无重叠，放最前）
-  if (new RegExp('^(' + DAYI_SERIES.join('|') + ')').test(u)) {
+  if (new RegExp('^(' + DAYI_SERIES_PATTERN + ')').test(u)) {
     const r = parseDayiResistor(s);
     if (r) return r;
   }
   if (/^APSRP/.test(u)) {
     const r = parseProsemiResistor(s);
+    if (r) return r;
+  }
+  // PROSEMI 的 LMJ / SRC 系列（需在 APSRP 之后，前缀不冲突）
+  if (/^LMJ/.test(u)) {
+    const r = parseProsemiLmj(s);
+    if (r) return r;
+  }
+  if (/^SRC/.test(u)) {
+    const r = parseProsemiSrc(s);
     if (r) return r;
   }
   if (/^(CRCW|RCA|WSL|WSK)/.test(u)) {
@@ -653,6 +843,21 @@ function toDayiModel(spec) {
   }
 
   const warnings = [];
+
+  // EBR 型号无功率位，额定功率由「尺寸 + 阻值」查表得出（皇上 2026-09-08 官方规格表）
+  if (spec.dayiSeries === 'EBR') {
+    const ebrPower = lookupEbrPower(spec.sizeCode, spec.resistance);
+    if (ebrPower) {
+      spec.power = ebrPower;
+      // 源厂商标称功率与大毅查表功率不一致时必须报警（同尺寸下功率随阻值变化，不能只看尺寸）
+      if (spec.srcPower && Math.abs(spec.srcPower - parseFloat(ebrPower)) > 1e-9) {
+        warnings.push(`功率差异：源料号标称 ${spec.srcPower}W，大毅 ${spec.dayiSeries} 在该阻值档为 ${ebrPower}，必须人工确认能否替换`);
+      }
+    } else {
+      warnings.push(`EBR${spec.sizeCode} 在 ${spec.resistanceFormatted} 档无官方功率数据（表内只有 0.1~5mΩ 离散档），需核对规格书`);
+    }
+  }
+
   let tolCode = spec.tolCode;
 
   // 0Ω 特殊归一
@@ -670,10 +875,15 @@ function toDayiModel(spec) {
     warnings.push(`阻值 ${spec.resistanceFormatted} 超出大毅编码范围，回退为输入原码 ${spec.resistanceCode}`);
   }
 
-  // 包装：EBR 例子用 E（编带），其余系列 T（纸带，皇上 2026-09-03 默认）
-  const packaging = spec.dayiSeries === 'EBR' ? 'E' : spec.packaging;
+  // 包装：已确认系列用 E（编带），其余系列沿用输入的 T（纸带）
+  const packaging = E_PACK_SERIES.includes(spec.dayiSeries) ? 'E' : spec.packaging;
 
-  const dayiModel = `${spec.dayiSeries}${spec.sizeCode}${tolCode}${packaging}${resCode}`;
+  // 功率位 + 材料位回带：仅当输入本身带这两位时才拼接
+  // 材料位只有 RLM/RLPL 有，RLP/EBR 无此位，拼上去就是错料号
+  const matCode = MATERIAL_CODE_SERIES.includes(spec.dayiSeries) ? (spec.materialCode || '') : '';
+  const midCode = (spec.powerCode || '') + matCode;
+
+  const dayiModel = `${spec.dayiSeries}${spec.sizeCode}${tolCode}${packaging}${midCode}${resCode}`;
   return {
     ...spec,
     dayiModel,
