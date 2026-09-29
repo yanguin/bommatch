@@ -1,6 +1,6 @@
 {
   "name": "bommatch",
-  "version": "1.3.0",
+  "version": "1.4.3",
   "private": true,
   "description": "一只鹅的神奇工具",
   "author": "鹅",
@@ -8,13 +8,14 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "build:win": "electron-builder --win",
+    "build:win": "electron-builder --win --publish never",
     "dev": "electron . --dev"
   },
   "dependencies": {
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "electron-updater": "^6.3.9",
     "element-ui": "^2.15.14",
-    "vue": "^2.7.14"
+    "vue": "^2.7.14",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "electron": "^28.0.0",
@@ -40,6 +41,7 @@
       "!**/{appveyor.yml,.travis.yml,circle.yml}",
       "!**/{npm-debug.log,yarn-.log,yarn.lock,package-lock.json}",
       "!dist",
+      "!updates",
       "!scraper.js",
       "!fetch_full.js",
       "!json_to_xlsx.js"
@@ -55,8 +57,15 @@
       "createStartMenuShortcut": true,
       "include": "build/installer.nsh",
       "language": "2052",
-      "installerLanguages": ["zh_CN"],
+      "installerLanguages": [
+        "zh_CN"
+      ],
       "perMachine": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "yanguin",
+      "repo": "bommatch"
     }
   }
 }

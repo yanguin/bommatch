@@ -1858,7 +1858,10 @@ function matchSpec(spec, index, options = {}) {
   const { exactFirst = true, fuzzyTolerance = 0.05 } = options;
 
   // 精确匹配
-  const key = `${spec.cap}|${spec.volt}|${spec.temp}|${spec.size}`;
+  // 尺寸统一归一为英制码：索引 key 存的是 sizeInch() 后的裸英制码（如 "1210"），
+  // 而微容型号解析 (parseProductName) 输出的是显示格式 "1210/3225M"，两者必须对齐
+  const specSize = sizeInch(spec.size);
+  const key = `${spec.cap}|${spec.volt}|${spec.temp}|${specSize}`;
   let cands = index.get(key);
 
   // 介质缺失时，忽略介质维度匹配（按 容量/电压/尺寸 匹配）
@@ -1866,7 +1869,7 @@ function matchSpec(spec, index, options = {}) {
     cands = [];
     for (const [k, items] of index.entries()) {
       const [capStr, voltStr, , sizeStr] = k.split('|');
-      if (parseFloat(capStr) === spec.cap && parseFloat(voltStr) === spec.volt && sizeStr === spec.size) {
+      if (parseFloat(capStr) === spec.cap && parseFloat(voltStr) === spec.volt && sizeStr === specSize) {
         cands.push(...items);
       }
     }
@@ -1909,7 +1912,7 @@ function matchSpec(spec, index, options = {}) {
     const volt = parseFloat(voltStr);
 
     // 检查电压、尺寸是否完全匹配；介质非空时才检查介质
-    if (volt !== spec.volt || sizeStr !== spec.size) continue;
+    if (volt !== spec.volt || sizeStr !== specSize) continue;
     if (spec.temp !== '' && tempStr !== spec.temp) continue;
 
     // 检查容量是否在容差范围内
@@ -2126,4 +2129,50 @@ function runMatch(bomPath, products, options = {}) {
   };
 }
 
-module.exports = { runMatch, parseDesc, parseDescLoose, buildIndex, matchSpec, getSeries, parseProductName, parseOtherBrandMlcc };
+// —— 型号厂商识别（仅 UI 实时展示用）——
+// 对"型号"输入标注厂商，返回展示字符串；null 表示不显示（空 / 规格描述 / 未识别型号）。
+// 歧义前缀按皇上口径以"或"连接双名：
+//   MT                → PDC信昌 或 Walsin华新科
+//   4位数字+介质字母   → FH风华 或 Walsin华新科
+// 顺序贴近 parseOtherBrandMlcc：先特定品牌、后宽泛、微容最后。
+function detectBrand(name) {
+  if (!name || typeof name !== 'string') return null;
+  const s = name.trim().toUpperCase();
+  if (!s) return null;
+  // 规格描述（逗号分隔的物料描述）不是型号，不标注
+  if (s.includes(',')) return null;
+
+  // 国巨 YAGEO
+  if (/^(CC|AC)/.test(s)) return 'YAGEO(国巨)';
+  // 太阳诱电 TAIO YUDEN
+  if (/^M[ACBS](AS|AR|JC|RL)/.test(s) || /^[AJLTEGUHQS]MK\d/.test(s)) return 'TAIYO YUDEN(太阳诱电)';
+  // 信昌 PDC（MT 除外：与华新科共用）
+  if (/^(FK|FM|FS|FR|FE|FV|FJ|FP|MG|MA)/.test(s)) return 'PDC(信昌)';
+  // MT：信昌 PDC 或 华新科 Walsin（歧义，双名）
+  if (/^MT/.test(s)) return 'PDC(信昌) 或 Walsin(华新科)';
+  // 京瓷 Kyocera
+  if (/^(CM|CT|CU|AR)/.test(s)) return 'KYOCERA(京瓷)';
+  // TDK 东电化（CGA/CNA 车规 / C+公制 通用）
+  if (/^(CGA|CNA)/.test(s)) return 'TDK(东电化)';
+  if (/^C(1005|1608|2012|3216|3225|4532|5025|5750|6432|7450)(X5R|X6S|X7R|X7S|X7T|X8R|X8L|X8M|C0G|NP0|NPO|Y5V|Z5U|CH|JB|U2J)/.test(s)) return 'TDK(东电化)';
+  // KEMET
+  if (/^C(0201|0402|0603|0805|1206|1210|1805|1808|1812|1825|2220|2225)[A-Z][\dR]{3}[BCDFGJKM][843521AF][A-Z]A[A-Z]/.test(s)) return 'KEMET';
+  // 禾伸堂 HolyStone
+  if (/^C\d/.test(s)) return 'HOLYSTONE(禾伸堂)';
+  // 三环 CCTC
+  if (/^TCC/.test(s)) return 'CCTC(三环集团)';
+  // 火炬 Torch
+  if (/^(FCC|HGC)/.test(s)) return 'TORCH(火炬)';
+  // 村田 Murata
+  if (/^(GRM|GCM|GRT|GCJ|GJM|GCQ)/.test(s)) return 'MURATA(村田)';
+  // AVX
+  if (/^\d{4}[6ZY3D512][ACF][\dR]{3}[BCDFGJKM]/.test(s)) return 'AVX';
+  // 风华 FH / 华新科 Walsin（4位数字+介质，共用格式 → 双名）
+  if (/^\d{4}(B|CG|X|N|C|R|F|S)[\dR]{3}/.test(s)) return 'FH(风华) 或 Walsin(华新科)';
+  // 微容（最后判断：单字母前缀宽泛）
+  if (parseViiyong(s)) return 'VIIYONG(微容)';
+
+  return null;
+}
+
+module.exports = { runMatch, parseDesc, parseDescLoose, buildIndex, matchSpec, getSeries, parseProductName, parseOtherBrandMlcc, detectBrand };

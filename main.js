@@ -4,6 +4,9 @@ const fs = require('fs');
 const XLSX = require('xlsx');
 const licenseChecker = require('./license-checker');
 
+// 更新/通知所需的 Windows 应用标识（与 package.json 的 appId 保持一致）
+app.setAppUserModelId('com.viiyong.bom-matcher');
+
 let mainWindow;
 
 function createWindow() {
@@ -35,9 +38,79 @@ function createWindow() {
   });
 }
 
+// 热更新：启动后后台检查新版本，下载完成后弹窗询问重启安装
+function setupAutoUpdater() {
+  // 开发模式或未打包时不检查（避免每次调试都触发）
+  if (!app.isPackaged || process.argv.includes('--dev')) return;
+
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = true; // 发现新版本自动后台下载
+  autoUpdater.forceRunAfter = true; // 安装完成后自动重新启动应用
+
+  // [诊断-临时] 暴露更新检查各阶段结果，用于定位热更新不弹窗的问题；定位后移除
+  autoUpdater.on('update-available', (info) => {
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: '诊断',
+      message: '发现新版本 v' + info.version + '，开始后台下载',
+      buttons: ['确定'],
+      noLink: true
+    });
+  });
+  autoUpdater.on('update-not-available', () => {
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: '诊断',
+      message: '已是最新版本，无需更新',
+      buttons: ['确定'],
+      noLink: true
+    });
+  });
+  autoUpdater.on('error', (e) => {
+    dialog.showMessageBoxSync({
+      type: 'error',
+      title: '诊断-更新错误',
+      message: e && e.message || String(e),
+      buttons: ['确定'],
+      noLink: true
+    });
+  });
+
+  // 下载完成：弹窗询问是否立即重启安装
+  autoUpdater.on('update-downloaded', (info) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    const options = {
+      type: 'question',
+      title: '发现新版本',
+      message: `新版本 v${info.version} 已下载完成，重启后生效。\n是否立即重启安装？`,
+      buttons: ['立即重启', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    };
+    const choice = win ? dialog.showMessageBoxSync(win, options) : dialog.showMessageBoxSync(options);
+    if (choice === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  // [诊断-临时] 检查失败也弹窗显示原因；定位后还原为静默
+  autoUpdater.checkForUpdates().catch((e) => {
+    dialog.showMessageBoxSync({
+      type: 'error',
+      title: '诊断-检查失败',
+      message: e && e.message || String(e),
+      buttons: ['确定'],
+      noLink: true
+    });
+  });
+}
+
 // 授权通过后启动窗口和计时器
 function startApp(duration) {
   createWindow();
+  // 启动后台热更新检查（仅打包版生效，失败静默）
+  setupAutoUpdater();
   // 启动使用计时器（时长由 gitee version.txt 控制，单位：秒）
   licenseChecker.startUsageTimer(duration, () => {
     if (mainWindow) {
@@ -437,7 +510,7 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
 // 多型号顺序查询：一次建索引，按输入顺序返回结果
 // 支持两类输入：产品型号（精确/模糊匹配）与规格描述（如 CCAP,560pF,±10%,50V,X7R,SMD0402）
 // series：匹配系列查询条件（如 ['A','T']），限定产品搜索范围；空/未传 = 匹配全部
-ipcMain.handle('filter-products-multi', async (event, { products, names, series }) => {
+ipcMain.handle('filter-products-multi', async (event, { products, names, series, exactOnly }) => {
   try {
     const { parseDescLoose } = require('./matcher-core.js');
     // 入参防御：产品数据
@@ -496,82 +569,87 @@ ipcMain.handle('filter-products-multi', async (event, { products, names, series 
       const name = finalNames[i];
       const nameUpper = name.toUpperCase();
 
-      // 先精确匹配
+      // 先精确匹配（"仅本型号"模式下仅此一步，不做模糊与规格匹配）
       let hit = indexMap.get(nameUpper);
 
-      // 未中再模糊匹配（与单型号 parseAndQuery 的 includes 行为一致）
-      if (!hit) {
-        for (const item of list) {
-          if (item.productName && item.productName.toUpperCase().includes(nameUpper)) {
-            hit = item;
-            break;
+      // 非"仅本型号"模式：未中再模糊匹配（与单型号 parseAndQuery 的 includes 行为一致）
+      if (!exactOnly) {
+        if (!hit) {
+          for (const item of list) {
+            if (item.productName && item.productName.toUpperCase().includes(nameUpper)) {
+              hit = item;
+              break;
+            }
+          }
+        }
+
+        // 仍未命中时，尝试按规格描述匹配（以容量为锚定字段，避免型号误判）
+        // 例：CCAP,560pF,±10%,50V,X7R,SMD0402
+        if (!hit) {
+          const spec = parseDescLoose(name);
+          if (spec && spec.cap !== null && spec.cap !== undefined) {
+            const specHits = [];
+            for (const item of list) {
+              // 尺寸（spec.size 为 inch 码，如 0402；item.size 形如 "0402/1005M"）
+              if (spec.size) {
+                if ((item.size || '').split('/')[0].trim() !== spec.size) continue;
+              }
+              // 介质（NP0 已归一为 C0G）
+              if (spec.temp) {
+                if (!(item.tempCharacteristics || '').toUpperCase().includes(spec.temp)) continue;
+              }
+              // 标称容量
+              const capM = (item.capacity || '').match(/^([0-9.]+)\s*(pF|nF|uF|µF|mF|p|n|u|µ)$/i);
+              if (!capM) continue;
+              let itemPf = parseFloat(capM[1]);
+              const cu = capM[2].toLowerCase();
+              if (cu === 'nf' || cu === 'n') itemPf *= 1e3;
+              else if (cu === 'uf' || cu === 'µf' || cu === 'u' || cu === 'µ') itemPf *= 1e6;
+              else if (cu === 'mf') itemPf *= 1e9;
+              if (Math.abs(itemPf - spec.cap) > 0.001) continue;
+              // 额定电压
+              if (spec.volt !== null && spec.volt !== undefined) {
+                const itemVolt = parseFloat(item.voltage);
+                if (isNaN(itemVolt) || Math.abs(itemVolt - spec.volt) > 0.001) continue;
+              }
+              // 容量偏差
+              if (spec.dev) {
+                const itemDev = (item.capacityDeviation || '').replace(/\s+/g, '').replace(/\+\/-/g, '±');
+                if (itemDev !== spec.dev) continue;
+              }
+              specHits.push(item);
+            }
+
+            if (specHits.length > 0) {
+              matchedInputs++;
+              for (const item of specHits) {
+                if (result.length >= maxResults) {
+                  maxReached = true;
+                  continue;
+                }
+                result.push({
+                  inputName: name,
+                  inputIndex: i,
+                  hitCount: specHits.length,
+                  productName: item.productName || '',
+                  series: item.productName ? item.productName[0].toUpperCase() : '',
+                  features: cleanFeatures(item.features),
+                  size: item.size || '',
+                  tempCharacteristics: item.tempCharacteristics || '',
+                  capacity: item.capacity || '',
+                  capacityDeviation: item.capacityDeviation || '',
+                  voltage: item.voltage || '',
+                  specs: item.specs || []
+                });
+              }
+              continue;
+            }
           }
         }
       }
 
+      // 完全未匹配：也生成占位行，保证每条输入在表格中可见（与统计口径一致）
       if (!hit) {
-        // 未中产品型号时，尝试按规格描述匹配（以容量为锚定字段，避免型号误判）
-        // 例：CCAP,560pF,±10%,50V,X7R,SMD0402
-        const spec = parseDescLoose(name);
-        if (spec && spec.cap !== null && spec.cap !== undefined) {
-          const specHits = [];
-          for (const item of list) {
-            // 尺寸（spec.size 为 inch 码，如 0402；item.size 形如 "0402/1005M"）
-            if (spec.size) {
-              if ((item.size || '').split('/')[0].trim() !== spec.size) continue;
-            }
-            // 介质（NP0 已归一为 C0G）
-            if (spec.temp) {
-              if (!(item.tempCharacteristics || '').toUpperCase().includes(spec.temp)) continue;
-            }
-            // 标称容量
-            const capM = (item.capacity || '').match(/^([0-9.]+)\s*(pF|nF|uF|µF|mF|p|n|u|µ)$/i);
-            if (!capM) continue;
-            let itemPf = parseFloat(capM[1]);
-            const cu = capM[2].toLowerCase();
-            if (cu === 'nf' || cu === 'n') itemPf *= 1e3;
-            else if (cu === 'uf' || cu === 'µf' || cu === 'u' || cu === 'µ') itemPf *= 1e6;
-            else if (cu === 'mf') itemPf *= 1e9;
-            if (Math.abs(itemPf - spec.cap) > 0.001) continue;
-            // 额定电压
-            if (spec.volt !== null && spec.volt !== undefined) {
-              const itemVolt = parseFloat(item.voltage);
-              if (isNaN(itemVolt) || Math.abs(itemVolt - spec.volt) > 0.001) continue;
-            }
-            // 容量偏差
-            if (spec.dev) {
-              const itemDev = (item.capacityDeviation || '').replace(/\s+/g, '').replace(/\+\/-/g, '±');
-              if (itemDev !== spec.dev) continue;
-            }
-            specHits.push(item);
-          }
-
-          if (specHits.length > 0) {
-            matchedInputs++;
-            for (const item of specHits) {
-              if (result.length >= maxResults) {
-                maxReached = true;
-                continue;
-              }
-              result.push({
-                inputName: name,
-                inputIndex: i,
-                hitCount: specHits.length,
-                productName: item.productName || '',
-                series: item.productName ? item.productName[0].toUpperCase() : '',
-                features: cleanFeatures(item.features),
-                size: item.size || '',
-                tempCharacteristics: item.tempCharacteristics || '',
-                capacity: item.capacity || '',
-                capacityDeviation: item.capacityDeviation || '',
-                voltage: item.voltage || '',
-                specs: item.specs || []
-              });
-            }
-            continue;
-          }
-        }
-        // 完全未匹配：也生成占位行，保证每条输入在表格中可见（与统计口径一致）
         unmatchedInputs++;
         if (result.length < maxResults) {
           result.push({

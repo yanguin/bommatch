@@ -298,6 +298,8 @@ new Vue({
       filterMultiText: '',
       // 多型号态匹配系列筛选（A/T/B/V，默认全选；空数组=匹配全部）
       filterMultiSeries: ['A', 'T', 'B', 'V'],
+      // 多型号态"仅本型号"：勾选后只精确匹配输入型号本身，不做模糊与规格匹配
+      filterMultiExactOnly: false,
       // 多型号查询统计：{ totalInputs, matchedInputs, unmatchedInputs, productCount }
       filterMultiStats: null,
 
@@ -345,6 +347,12 @@ new Vue({
   },
 
   computed: {
+    // 型号筛选输入框下方的实时厂商提示：型号→厂商；规格描述或空→空字符串（不显示）
+    filterBrandHint() {
+      const name = (this.filterForm && this.filterForm.productName) || '';
+      return matcherCore.detectBrand(name) || '';
+    },
+
     // 当前 sheet 数据
     currentSheet() {
       if (!this.matchData || !this.matchData.sheets) return null;
@@ -1238,8 +1246,10 @@ new Vue({
       this.filterResult = null;
       this.filterMultiStats = null;
       this.filterSearchText = '';
-      if (this.filterInputMode === 'single') this.filterMultiText = '';
-      else this.filterForm.productName = '';
+      if (this.filterInputMode === 'single') {
+        this.filterMultiText = '';
+        this.filterMultiExactOnly = false;
+      } else this.filterForm.productName = '';
     },
 
     // 多型号顺序查询
@@ -1263,7 +1273,9 @@ new Vue({
           products: this.products,
           names,
           // 匹配系列作为查询条件：限定本次搜索的产品范围（空 = 全部）
-          series: this.filterMultiSeries
+          series: this.filterMultiSeries,
+          // "仅本型号"：只精确匹配输入型号本身，不做模糊与规格匹配
+          exactOnly: this.filterMultiExactOnly
         });
 
         if (res.error) { this.$message.warning(res.error); return; }

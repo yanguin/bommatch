@@ -1058,6 +1058,9 @@
                 clearable
                 @keyup.enter.native="parseAndFill">
               </el-input>
+              <div v-if="filterBrandHint" style="margin-top:4px;font-size:12px;color:var(--color-text-tertiary);line-height:1.5;">
+                {{ filterBrandHint }}
+              </div>
               <div class="filter-actions">
                 <el-button type="primary" @click="parseAndFill" style="flex: 1;">
                   解析
@@ -1103,6 +1106,9 @@
                   <el-checkbox label="B">B系列 - 工业设备</el-checkbox>
                   <el-checkbox label="V">V系列 - 通用设备</el-checkbox>
                 </el-checkbox-group>
+                <div style="margin-top: 6px;">
+                  <el-checkbox v-model="filterMultiExactOnly">仅本型号（只精确匹配输入型号本身，不做规格/模糊匹配）</el-checkbox>
+                </div>
                 <div v-if="filterMultiSeries.length === 0" style="margin-top: 8px; color: var(--color-error); font-size: 12px;">
                   未选择任何系列，将匹配全部产品
                 </div>
