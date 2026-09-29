@@ -19,6 +19,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# WorkBuddy 本地数据
+.workbuddy/
+
 # Environment files
 .env
 .env.local
