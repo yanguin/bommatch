@@ -119,6 +119,36 @@
       vertical-align: middle;
     }
 
+    /* 热更新下载进度提示 */
+    .update-toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      width: 240px;
+      padding: 10px 14px;
+      background: rgba(49, 48, 46, 0.92);
+      color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      z-index: 3000;
+    }
+    .update-toast-text {
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .update-toast-bar {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .update-toast-inner {
+      height: 100%;
+      background: #4f46e5;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
     .header p {
       font-size: var(--font-size-body);
       font-weight: var(--font-weight-body);
@@ -909,6 +939,16 @@
             <i :class="isPinned ? 'el-icon-bottom' : 'el-icon-top'"></i>
           </span>
         </div>
+      </div>
+    </div>
+
+    <!-- 热更新下载进度提示（右下角浮动条） -->
+    <div v-if="updateProgress" class="update-toast">
+      <div class="update-toast-text">
+        <i class="el-icon-download"></i> 正在下载更新 {{ updateProgress.percent }}%
+      </div>
+      <div class="update-toast-bar">
+        <div class="update-toast-inner" :style="{ width: (updateProgress.percent || 0) + '%' }"></div>
       </div>
     </div>
 

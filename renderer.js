@@ -245,6 +245,9 @@ new Vue({
       // 应用版本号（跟随 package.json version，热更新后自动更新）
       appVersion: '',
 
+      // 热更新下载进度（null 表示未下载；percent 0-100）
+      updateProgress: null,
+
       // 当前模式：bom 或 filter
       activeMode: 'bom',
 
@@ -1814,6 +1817,14 @@ new Vue({
     ipcRenderer.invoke('get-app-version').then(v => {
       this.appVersion = v;
     }).catch(() => {});
+
+    // 热更新下载进度：主进程推送进度，下载完成（null）后自动隐藏
+    ipcRenderer.on('update-progress', (e, p) => {
+      this.updateProgress = p;
+      if (p && p.percent >= 100) {
+        setTimeout(() => { this.updateProgress = null; }, 1500);
+      }
+    });
 
     // 初始化窗口置顶状态
     this.getPinStatus();

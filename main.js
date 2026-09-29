@@ -47,7 +47,50 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true; // 发现新版本自动后台下载
   autoUpdater.forceRunAfter = true; // 安装完成后自动重新启动应用
 
-  // [诊断-临时] 暴露更新检查各阶段结果，用于定位热更新不弹窗的问题；定位后移除
+  // 下载进度推送到渲染进程显示进度条
+  autoUpdater.on('download-progress', (p) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-progress', {
+        percent: Math.round(p.percent),
+        transferred: p.transferred,
+        total: p.total,
+        bytesPerSecond: p.bytesPerSecond
+      });
+    }
+  });
+
+  // 下载失败自动重试（网络超时常见，稍等后重试），重试耗尽则给出手动下载入口
+  let retryCount = 0;
+  const maxRetry = 3;
+  autoUpdater.on('error', (e) => {
+    const msg = e && e.message || String(e);
+    const isDownloadError = /timeout|timed ?out|ERR_|download|network|socket|abort/i.test(msg);
+    if (isDownloadError && retryCount < maxRetry) {
+      retryCount++;
+      const waitSec = 5 * retryCount;
+      dialog.showMessageBoxSync({
+        type: 'warning',
+        title: '更新下载中断',
+        message: `下载更新失败（${msg}）。\n${waitSec} 秒后自动重试（第 ${retryCount}/${maxRetry} 次）`,
+        buttons: ['确定'],
+        noLink: true
+      });
+      setTimeout(() => {
+        autoUpdater.downloadUpdate().catch(() => {});
+      }, waitSec * 1000);
+      return;
+    }
+    retryCount = 0;
+    dialog.showMessageBoxSync({
+      type: 'error',
+      title: '更新失败',
+      message: `${msg}\n\n如多次重试仍失败，请手动下载最新版安装：\nhttps://github.com/yanguin/bommatch/releases/latest`,
+      buttons: ['确定'],
+      noLink: true
+    });
+  });
+
+  // [诊断-临时] 暴露更新检查各阶段结果，用于定位热更新问题；定位后移除
   autoUpdater.on('update-available', (info) => {
     dialog.showMessageBoxSync({
       type: 'info',
@@ -66,18 +109,13 @@ function setupAutoUpdater() {
       noLink: true
     });
   });
-  autoUpdater.on('error', (e) => {
-    dialog.showMessageBoxSync({
-      type: 'error',
-      title: '诊断-更新错误',
-      message: e && e.message || String(e),
-      buttons: ['确定'],
-      noLink: true
-    });
-  });
 
-  // 下载完成：弹窗询问是否立即重启安装
+  // 下载完成：隐藏进度条，弹窗询问是否立即重启安装
   autoUpdater.on('update-downloaded', (info) => {
+    retryCount = 0;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-progress', null);
+    }
     const win = BrowserWindow.getAllWindows()[0];
     const options = {
       type: 'question',
