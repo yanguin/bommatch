@@ -72,6 +72,10 @@
 - **标题栏拖动** - 按住标题栏可拖动悬浮窗到任意位置
 - 标题栏显示当前缩放比例，支持一键重置缩放
 
+### 🏷️ 界面版本号显示
+- 页面标题「BOM型号匹配工具」右侧以小字显示当前版本号（如 `v1.4.4`）
+- 版本号读取自 `package.json` 的 `version` 字段，发布新版本（含热更新）后自动跟随显示，无需手工修改
+
 ## 目录结构
 
 ```
@@ -257,19 +261,22 @@ node json_to_xlsx.js
 5. 规格书链接使用域名 `https://www.viiyong.com`
 6. 打包前需要在 `build/` 目录放置 `icon.ico` 图标文件
 
-## 发布流程
+## 发布流程（GitHub Releases 热更新）
 
-安装包内置版本校验：安装时自动从 Gitee 拉取 `version.txt` 中的最新版本号进行比对，若安装包版本低于最新版本，将提示"该版本不是最新版本，请联系制作者获取安装包"并阻止安装。
+应用使用 `electron-updater` 通过 GitHub Releases 自动更新，发布新版本时：
 
-每次发布新版本时：
+1. 修改 `package.json` 中的 `version` 为新版本号（如 `1.4.5`）
+2. 运行 `npm.cmd run build:win` 打包（产物自动命名为 `BOM.Setup.1.4.5.exe`，`latest.yml` 文件名自动对齐）
+3. 打开 https://github.com/yanguin/bommatch/releases/new
+4. Tag 填 `v1.4.5`，点 **Create new tag on publish**
+5. 上传 `dist/` 下的三个文件：`latest.yml`、`BOM.Setup.1.4.5.exe`、`BOM.Setup.1.4.5.exe.blockmap`
+6. 点 **Publish release**，客户端重启后自动检测并下载更新（下载完成弹窗"立即重启"安装）
 
-1. 修改 `package.json` 中的 `version` 为新版本号
-2. 同步更新 `version.txt` 为相同版本号
-3. 将 `version.txt` push 到 Gitee master 分支
-4. 运行 `npm run build:win` 打包
+> 注意：上传的资产文件名必须与 `latest.yml` 中的 `path` 一致（构建产物已统一为 `BOM.Setup` 命名，直接拖 `dist/` 原文件即可，不要改名）。
 
 ## 更新日志
 
+- **v1.4.4** - 页面标题新增版本号显示（跟随 package.json 自动更新）；热更新发布源切换至 GitHub Releases，产物统一命名 `BOM.Setup`
 - **v1.2.3** - 新增命名规则悬浮窗：右下角圆形按钮，点击查看命名规则图片，支持Ctrl+滚轮缩放（50%~300%）和标题栏拖动
 - **v1.2.2** - 优化数据更新流程：添加自动备份脚本,修复硬编码产品数量问题
 - **v1.2.1** - 版本号升级
