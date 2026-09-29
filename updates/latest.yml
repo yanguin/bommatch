@@ -1,8 +1,8 @@
-version: 1.4.0
+version: 1.4.1
 files:
-  - url: BOM型号匹配工具 Setup 1.4.0.exe
-    sha512: FHLLE2H/PfiMgUjgtU9zmtadfH7Fw6wHiwrWfwq1ewjCG0ix888fRmql088LFSRgh086SK64NuydtsmSuBjeeg==
-    size: 85363537
-path: BOM型号匹配工具 Setup 1.4.0.exe
-sha512: FHLLE2H/PfiMgUjgtU9zmtadfH7Fw6wHiwrWfwq1ewjCG0ix888fRmql088LFSRgh086SK64NuydtsmSuBjeeg==
-releaseDate: '2026-09-29T02:28:38.678Z'
+  - url: BOM型号匹配工具 Setup 1.4.1.exe
+    sha512: sbaghkJzeXMWsHx4x3AYMIJuOOCklx2v4e/UkHDuNH1FaWrUK8CI4u4POe/JEiVOa+TWXHePW/Wr9phsshXzWA==
+    size: 85359304
+path: BOM型号匹配工具 Setup 1.4.1.exe
+sha512: sbaghkJzeXMWsHx4x3AYMIJuOOCklx2v4e/UkHDuNH1FaWrUK8CI4u4POe/JEiVOa+TWXHePW/Wr9phsshXzWA==
+releaseDate: '2026-09-29T02:55:25.893Z'
