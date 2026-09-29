@@ -25,3 +25,6 @@ Thumbs.db
 # Environment files
 .env
 .env.local
+
+# 废弃的 Gitee 热更新发布目录（已切换 GitHub Releases）
+updates/
