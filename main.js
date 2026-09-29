@@ -218,6 +218,11 @@ function loadJsonData(relativePath, notFoundMsg) {
   }
 }
 
+// 返回应用当前版本号（读取 package.json 的 version，发布新版本后自动跟随）
+ipcMain.handle('get-app-version', async () => {
+  return app.getVersion();
+});
+
 // 加载viiyong产品数据
 ipcMain.handle('load-products', async (event) => {
   return loadJsonData('data/viiyong_products_full.json', '产品数据文件不存在');

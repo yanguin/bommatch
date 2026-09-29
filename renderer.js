@@ -242,6 +242,9 @@ new Vue({
       matching: false,
       filtering: false,
 
+      // 应用版本号（跟随 package.json version，热更新后自动更新）
+      appVersion: '',
+
       // 当前模式：bom 或 filter
       activeMode: 'bom',
 
@@ -1806,6 +1809,11 @@ new Vue({
   mounted() {
     // 初始化表格高度
     this.calcTableHeight();
+
+    // 获取应用版本号（跟随 package.json version，热更新后自动显示新版本）
+    ipcRenderer.invoke('get-app-version').then(v => {
+      this.appVersion = v;
+    }).catch(() => {});
 
     // 初始化窗口置顶状态
     this.getPinStatus();

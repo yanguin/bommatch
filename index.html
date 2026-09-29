@@ -109,6 +109,16 @@
       margin-bottom: var(--spacing-xxs);
     }
 
+    .header h1 .app-version {
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: 0;
+      color: var(--color-text-secondary);
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
     .header p {
       font-size: var(--font-size-body);
       font-weight: var(--font-weight-body);
@@ -882,7 +892,7 @@
     <div class="header">
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h1>BOM型号匹配工具</h1>
+          <h1>BOM型号匹配工具<span class="app-version">v{{ appVersion }}</span></h1>
           <p>自动匹配 MLCC 型号，支持精确匹配与容差匹配</p>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
