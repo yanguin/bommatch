@@ -1,6 +1,7 @@
 # STATUS.md — 当前状态 / 失败方案 / 已知问题
 
 ## 已完成
+- [x] 【功能】「复制详细信息」模板化升级（2026-10-23）：复制格式 = 字段胶囊序列（tokens）+ 分隔符 + 风格开关；tokens 中 'ARROW' 为推导符「==》」。7 个内置预设（型号/规格[默认]、规格、规格==》型号、ERP反查、ERP全字段、原描述、型号/输入型号），「更多」菜单直接点选复制 + 悬停显示示例；「自定义复制格式…」弹窗支持胶囊增删/调序、分隔符(/,;|)、容值大写、SMD前缀、多行换行/Tab 分隔、实时预览、存为自定义预设（localStorage `bommatch_copy_cfg`，含上次使用记忆）。改动：renderer.js（COPY_BUILT_IN_PRESETS/COPY_FIELD_DEFS 常量 + copy* 方法组 + computed）、index.html（菜单项 + el-dialog）；旧 copySelectedDetails 已删除（被模板引擎取代）。回归：`node _test_copy_fmt.js` 11/11 PASS（6 预设输出与设计示例逐字一致 + 4 边界）；`node _test_tpl_compile.js` 模板编译通过。main.js / matcher-core.js 零改动。
 - [x] 【功能】型号筛选单型号输入框下方新增「实时厂商提示」：`matcher-core.detectBrand`（型号→厂商，规格描述/空→不显示；歧义前缀按皇上口径以"或"显示双名：MT→PDC信昌|Walsin华新科、4位数字+介质→FH风华|Walsin华新科、微容最后判断）。renderer 新增 computed `filterBrandHint`，html 输入框下加标签行。
 - [x] 微容型号「解析与查询」尺寸键不一致 bug：`matchSpec` 用 `sizeInch()` 归一（项目 + 技能各地一版本，2026-09-29）。回归：multi_filter 32/0、dayi 207/0 全过。
 - [x] 微容数据同步至官网最新状态：`data/viiyong_products_full.json` 22510 → **22500 条**（2026-09-29 拉取）。

@@ -265,6 +265,39 @@ Vue.component('results-table', {
   }
 });
 
+// ============ 复制格式（模板化「复制详细信息」） ============
+// 模板 = 字段胶囊序列（tokens）+ 分隔符（sep）+ 风格开关；tokens 中 'ARROW' 表示推导符「==》」
+// 字段定义：id → 标签（取值逻辑见 getCopyFieldVal）
+const COPY_FIELD_DEFS = [
+  { id: 'ccap',  label: '类别码' },
+  { id: 'model', label: '产品型号' },
+  { id: 'input', label: '输入型号' },
+  { id: 'cap',   label: '容值' },
+  { id: 'tol',   label: '精度' },
+  { id: 'volt',  label: '电压' },
+  { id: 'temp',  label: '介质' },
+  { id: 'size',  label: '封装' }
+];
+
+// 内置预设（example 供菜单悬停提示；ERP 系列预设自带大写容值 + SMD 封装前缀风格）
+const COPY_BUILT_IN_PRESETS = [
+  { id: 'modelSpec',  name: '型号/规格',     sep: '/', capUpper: false, sizeSmd: false, tokens: ['model', 'size', 'temp', 'cap', 'tol', 'volt'], example: 'T225K0402X5R100NCT/0402/X5R/2.2uF/±10%/10V' },
+  { id: 'spec',       name: '规格',          sep: '/', capUpper: false, sizeSmd: false, tokens: ['size', 'temp', 'cap', 'tol', 'volt'], example: '0402/X5R/2.2uF/±10%/10V' },
+  { id: 'spec2model', name: '规格==》型号',  sep: '/', capUpper: false, sizeSmd: false, tokens: ['size', 'temp', 'cap', 'tol', 'volt', 'ARROW', 'model'], example: '0402/X5R/2.2uF/±10%/10V==》T225K0402X5R100NCT' },
+  { id: 'erpLookup',  name: 'ERP反查',       sep: ',', capUpper: true,  sizeSmd: true,  tokens: ['ccap', 'cap', 'tol', 'volt', 'temp', 'size', 'ARROW', 'model'], example: 'CCAP,2.2UF,±10%,10V,X5R,SMD0402==》T225K0402X5R100NCT' },
+  { id: 'erpFull',    name: 'ERP全字段',     sep: ',', capUpper: true,  sizeSmd: true,  tokens: ['ccap', 'cap', 'tol', 'volt', 'temp', 'size', 'model'], example: 'CCAP,2.2UF,±10%,10V,X5R,SMD0402,T225K0402X5R100NCT' },
+  { id: 'origDesc',   name: '原描述',        sep: ',', capUpper: true,  sizeSmd: true,  tokens: ['ccap', 'cap', 'tol', 'volt', 'temp', 'size'], example: 'CCAP,2.2UF,±10%,10V,X5R,SMD0402' },
+  { id: 'modelInput', name: '型号/输入型号', sep: '/', capUpper: false, sizeSmd: false, tokens: ['model', 'input'], example: 'T225K0402X5R100NCT/输入的原型号' }
+];
+
+// 用户复制格式配置的 localStorage 读写（lastId=上次使用的预设；custom=自定义预设）
+function loadCopyCfg() {
+  try { return JSON.parse(localStorage.getItem('bommatch_copy_cfg')) || {}; } catch (e) { return {}; }
+}
+function saveCopyCfg(lastId, custom) {
+  localStorage.setItem('bommatch_copy_cfg', JSON.stringify({ lastId: lastId, custom: custom }));
+}
+
 new Vue({
   el: '#app',
   data() {
@@ -331,6 +364,12 @@ new Vue({
       // 型号筛选结果表格勾选的行（用于规格书批量下载/浏览器打开）
       specSelectedRows: [],
 
+      // 复制格式：上次使用的预设 id + 自定义预设（localStorage 持久化，mounted 时载入）
+      copyCfg: { lastId: 'modelSpec' },
+      copyCustomPresets: [],
+      // 自定义复制格式弹窗（编辑态本身即一份格式配置，可直接用于填充）
+      copyDlg: { visible: false, name: '', tokens: [], sep: '/', capUpper: false, sizeSmd: false, rowSep: 'n' },
+
       // 型号筛选输入模式：single 单型号 / multi 多型号
       filterInputMode: 'single',
       // 多型号 textarea 内容
@@ -386,6 +425,29 @@ new Vue({
   },
 
   computed: {
+    // 「复制详细信息」当前生效的预设（菜单上动态显示其名字）
+    copyLastPreset() {
+      return this.findCopyPreset(this.copyCfg.lastId) || COPY_BUILT_IN_PRESETS[0];
+    },
+
+    // 「更多」菜单里列出的复制格式预设（内置除默认「型号/规格」外 + 自定义）
+    copyMenuPresets() {
+      return COPY_BUILT_IN_PRESETS.filter(p => p.id !== 'modelSpec').concat(this.copyCustomPresets);
+    },
+
+    // 弹窗里可载入的全部预设（内置 + 自定义）
+    copyDlgPresetList() {
+      return COPY_BUILT_IN_PRESETS.concat(this.copyCustomPresets);
+    },
+
+    // 弹窗实时预览：取前 2 条勾选行按当前编辑态填充
+    copyDlgPreview() {
+      if (this.specSelectedRows.length === 0) return [];
+      return this.specSelectedRows.slice(0, 2)
+        .map(r => this.fillCopyTemplate(this.copyDlg, r))
+        .filter(Boolean);
+    },
+
     // 型号筛选输入框下方的实时厂商提示：型号→厂商；规格描述或空→空字符串（不显示）
     filterBrandHint() {
       const name = (this.filterForm && this.filterForm.productName) || '';
@@ -911,7 +973,9 @@ new Vue({
       if (cmd === 'download') this.downloadSelectedSpecs();
       else if (cmd === 'open') this.openSelectedSpecs();
       else if (cmd === 'copyModel') this.copySelectedModels();
-      else if (cmd === 'copyDetail') this.copySelectedDetails();
+      else if (cmd === 'copyDetail') this.copyWithCfg(this.copyCfg.lastId);
+      else if (cmd === 'copyFmtDlg') this.openCopyDlg();
+      else if (cmd.indexOf('copyFmt:') === 0) this.copyWithCfg(cmd.slice(8));
     },
 
     // 复制勾选行的产品型号（多行换行分隔；暂无匹配行复制"暂无匹配"）
@@ -928,24 +992,179 @@ new Vue({
       this.$message.success(msg);
     },
 
-    // 复制勾选行的详细信息：型号/英寸尺寸/温度特性/容量/偏差/电压（如 T104K0201X5R100NJT/0201/X5R/100nF/±10%/10V）
-    // 尺寸取英寸码（0201/1005M → 0201），温度特性取代码（X5R(-55℃~85℃) → X5R），电压补 V；空段自动省略；多行换行分隔
-    // 暂无匹配行无规格，只复制"暂无匹配"
-    copySelectedDetails() {
-      const lines = this.specSelectedRows.map(r => [
-        r.productName || (r.unmatched ? '暂无匹配' : ''),
-        String(r.size || '').split('/')[0],
-        String(r.tempCharacteristics || '').split('(')[0],
-        r.capacity || '',
-        r.capacityDeviation || '',
-        (r.voltage !== undefined && r.voltage !== null && r.voltage !== '') ? r.voltage + 'V' : ''
-      ].filter(s => s !== '').join('/')).filter(Boolean);
+    // ---- 模板化复制：字段取值 / 模板填充 / 按预设复制 ----
+
+    // 单字段取值（r=结果行，cfg=格式配置）。空值一律返回 ''，由模板填充时自动省略
+    getCopyFieldVal(id, row, cfg) {
+      switch (id) {
+        case 'ccap':  return 'CCAP';
+        case 'model': return row.productName || (row.unmatched ? '暂无匹配' : '');
+        case 'input': return row.inputName || '';
+        case 'cap': {
+          const v = row.capacity || '';
+          return cfg && cfg.capUpper ? v.toUpperCase() : v;
+        }
+        case 'tol':   return row.capacityDeviation || '';
+        case 'volt':  return (row.voltage !== undefined && row.voltage !== null && row.voltage !== '') ? row.voltage + 'V' : '';
+        case 'temp':  return String(row.tempCharacteristics || '').split('(')[0];
+        case 'size': {
+          const v = String(row.size || '').split('/')[0];
+          return (cfg && cfg.sizeSmd && v) ? 'SMD' + v : v;
+        }
+        default: return '';
+      }
+    },
+
+    // 模板填充：相邻字段间用 sep 连接；'ARROW' 输出「==》」且两侧不加 sep；空段自动省略；
+    // 字段为空导致推导符悬空时（行尾/行首）清理掉
+    fillCopyTemplate(cfg, row) {
+      const groups = [];
+      let group = [];
+      const flush = () => {
+        const s = group.filter(v => v !== '').join(cfg.sep);
+        if (s) groups.push(s);
+        group = [];
+      };
+      for (const t of cfg.tokens) {
+        if (t === 'ARROW') { flush(); groups.push('ARROW'); }
+        else group.push(this.getCopyFieldVal(t, row, cfg));
+      }
+      flush();
+      let line = '';
+      groups.forEach((g, i) => {
+        if (g === 'ARROW') { line += '==》'; return; }
+        if (line && line.slice(-3) !== '==》') line += cfg.sep;
+        line += g;
+      });
+      return line.replace(/==》$/, '').replace(/^==》/, '');
+    },
+
+    // 按 id 查预设（内置 + 自定义）
+    findCopyPreset(id) {
+      return COPY_BUILT_IN_PRESETS.find(p => p.id === id) ||
+             this.copyCustomPresets.find(p => p.id === id) || null;
+    },
+
+    // 记住上次使用的预设（下次点「复制详细信息」直接按它复制）
+    setCopyLast(id) {
+      this.copyCfg.lastId = id;
+      saveCopyCfg(id, this.copyCustomPresets);
+    },
+
+    // 按预设复制勾选行；多行按 rowSep 分隔（t=Tab 可直贴 Excel 自动分列）
+    copyWithCfg(id) {
+      const preset = this.findCopyPreset(id);
+      if (!preset) return;
+      if (this.specSelectedRows.length === 0) {
+        this.$message.warning('请先勾选要复制的行');
+        return;
+      }
+      const rowSep = preset.rowSep === 't' ? '\t' : '\n';
+      const lines = this.specSelectedRows.map(r => this.fillCopyTemplate(preset, r)).filter(Boolean);
       if (lines.length === 0) {
         this.$message.warning('勾选的行没有可复制的信息');
         return;
       }
-      clipboard.writeText(lines.join('\n'));
-      this.$message.success(`已复制 ${lines.length} 行详细信息`);
+      clipboard.writeText(lines.join(rowSep));
+      this.setCopyLast(id);
+      const unmatched = this.specSelectedRows.filter(r => r.unmatched).length;
+      let msg = `已复制 ${lines.length} 行（格式：${preset.name}）`;
+      if (unmatched > 0) msg += `，含 ${unmatched} 行暂无匹配`;
+      this.$message.success(msg);
+    },
+
+    // ---- 自定义复制格式弹窗 ----
+
+    // 打开弹窗：以上次使用的格式作为编辑起点
+    openCopyDlg() {
+      this.copyDlgLoadPreset(this.copyLastPreset);
+      this.copyDlg.visible = true;
+    },
+
+    // 载入预设到编辑区
+    copyDlgLoadPreset(p) {
+      this.copyDlg.name = p.name;
+      this.copyDlg.tokens = p.tokens.slice();
+      this.copyDlg.sep = p.sep || '/';
+      this.copyDlg.capUpper = !!p.capUpper;
+      this.copyDlg.sizeSmd = !!p.sizeSmd;
+      this.copyDlg.rowSep = p.rowSep === 't' ? 't' : 'n';
+    },
+
+    // 胶囊编辑：添加 / 删除 / 左右移位（整体替换数组以触发 Vue2 响应式）
+    copyDlgAdd(id) { this.copyDlg.tokens.push(id); },
+    copyDlgRemove(i) { this.copyDlg.tokens.splice(i, 1); },
+    copyDlgMove(i, d) {
+      const t = this.copyDlg.tokens;
+      const j = i + d;
+      if (j < 0 || j >= t.length) return;
+      const tmp = t.slice();
+      tmp.splice(j, 0, tmp.splice(i, 1)[0]);
+      this.copyDlg.tokens = tmp;
+    },
+
+    // 字段 id → 显示标签（弹窗胶囊用）
+    copyFieldLabel(t) {
+      if (t === 'ARROW') return '==》';
+      const f = COPY_FIELD_DEFS.find(d => d.id === t);
+      return f ? f.label : t;
+    },
+
+    // 删除自定义预设
+    async removeCustomPreset(p) {
+      const ok = await this.$confirm(`删除自定义预设「${p.name}」？`, '提示', {
+        type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+      }).catch(() => null);
+      if (!ok) return;
+      this.copyCustomPresets = this.copyCustomPresets.filter(x => x.id !== p.id);
+      if (this.copyCfg.lastId === p.id) this.setCopyLast('modelSpec');
+      else saveCopyCfg(this.copyCfg.lastId, this.copyCustomPresets);
+    },
+
+    // 弹窗「存为预设」：把当前编辑态存为自定义预设（更多菜单里可直接用）
+    async saveCopyPreset() {
+      if (this.copyDlg.tokens.length === 0) {
+        this.$message.warning('模板为空，请先添加字段');
+        return;
+      }
+      const ret = await this.$prompt('给这个格式起个名字', '存为预设', {
+        inputValue: this.copyDlg.name || '我的格式',
+        inputValidator: v => (v && v.trim()) ? true : '名称不能为空'
+      }).catch(() => null);
+      if (!ret) return;
+      this.copyCustomPresets.push({
+        id: 'custom_' + Date.now(),
+        name: ret.value.trim(),
+        sep: this.copyDlg.sep,
+        capUpper: this.copyDlg.capUpper,
+        sizeSmd: this.copyDlg.sizeSmd,
+        rowSep: this.copyDlg.rowSep,
+        tokens: this.copyDlg.tokens.slice()
+      });
+      saveCopyCfg(this.copyCfg.lastId, this.copyCustomPresets);
+      this.$message.success('已存为预设，可在「更多」菜单直接使用');
+    },
+
+    // 弹窗「复制」：按当前编辑态直接复制（不必先存预设）
+    dlgCopy() {
+      if (this.copyDlg.tokens.length === 0) {
+        this.$message.warning('模板为空，请先添加字段');
+        return;
+      }
+      if (this.specSelectedRows.length === 0) {
+        this.$message.warning('请先勾选要复制的行');
+        return;
+      }
+      const cfg = Object.assign({}, this.copyDlg, { name: this.copyDlg.name || '自定义格式' });
+      const rowSep = cfg.rowSep === 't' ? '\t' : '\n';
+      const lines = this.specSelectedRows.map(r => this.fillCopyTemplate(cfg, r)).filter(Boolean);
+      if (lines.length === 0) {
+        this.$message.warning('勾选的行没有可复制的信息');
+        return;
+      }
+      clipboard.writeText(lines.join(rowSep));
+      this.copyDlg.visible = false;
+      this.$message.success(`已复制 ${lines.length} 行（格式：${cfg.name}）`);
     },
 
     // 用浏览器打开勾选行的全部规格书（用户自选：与下载并存，URL 去重，>10 个先确认）
@@ -1856,6 +2075,11 @@ new Vue({
   mounted() {
     // 初始化表格高度
     this.calcTableHeight();
+
+    // 载入复制格式配置（上次使用的预设 + 自定义预设）
+    const cfg = loadCopyCfg();
+    if (cfg.lastId) this.copyCfg.lastId = cfg.lastId;
+    if (Array.isArray(cfg.custom)) this.copyCustomPresets = cfg.custom;
 
     // 获取应用版本号（跟随 package.json version，热更新后自动显示新版本）
     ipcRenderer.invoke('get-app-version').then(v => {
