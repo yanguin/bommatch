@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, net, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
@@ -139,6 +139,122 @@ function setupAutoUpdater() {
   });
 }
 
+// ========== 版本过期强制更新（闸门拦截后的无窗口热更新） ==========
+const RELEASE_URL = 'https://github.com/yanguin/bommatch/releases/latest';
+let updateProgressWin = null;
+
+// 简易加载条小窗（无边框，仅显示下载进度）
+function showUpdateProgressWindow() {
+  if (updateProgressWin && !updateProgressWin.isDestroyed()) return;
+  updateProgressWin = new BrowserWindow({
+    width: 320,
+    height: 92,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    show: false,
+    alwaysOnTop: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  const html = '<body style="margin:0;font-family:Microsoft YaHei,sans-serif;background:#fafafa;'
+    + 'display:flex;flex-direction:column;justify-content:center;padding:0 18px;height:100vh;box-sizing:border-box;">'
+    + '<div id="t" style="font-size:12px;color:#666;margin-bottom:8px;">正在下载新版本… 0%</div>'
+    + '<div style="height:6px;background:#e5e5e5;border-radius:3px;overflow:hidden;">'
+    + '<div id="bar" style="height:100%;width:0%;background:#4a89dc;border-radius:3px;transition:width .2s;"></div>'
+    + '</div>'
+    + '<script>function setProgress(p){document.getElementById("bar").style.width=p+"%";'
+    + 'document.getElementById("t").textContent="正在下载新版本… "+p+"%";}</script>'
+    + '</body>';
+  updateProgressWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  updateProgressWin.once('ready-to-show', () => updateProgressWin.show());
+}
+
+function setUpdateProgress(percent) {
+  if (updateProgressWin && !updateProgressWin.isDestroyed()) {
+    updateProgressWin.webContents.executeJavaScript(`setProgress(${Math.round(percent)})`).catch(() => {});
+  }
+}
+
+function closeUpdateProgressWindow() {
+  if (updateProgressWin && !updateProgressWin.isDestroyed()) {
+    updateProgressWin.close();
+  }
+  updateProgressWin = null;
+}
+
+// 下载失败兜底：弹窗给「打开下载页」入口
+function fallbackOpenDownloadPage() {
+  closeUpdateProgressWindow();
+  const choice = dialog.showMessageBoxSync({
+    type: 'error',
+    title: '自动更新失败',
+    message: '自动更新下载失败，请手动下载最新版本安装。',
+    buttons: ['打开下载页', '退出'],
+    defaultId: 0,
+    noLink: true
+  });
+  if (choice === 0) shell.openExternal(RELEASE_URL);
+  app.quit();
+}
+
+// 版本过期（needsUpdate）时的强制更新流程：弹窗 → 无窗口热更新 / 打开下载页
+function handleForcedUpdate(message) {
+  const choice = dialog.showMessageBoxSync({
+    type: 'warning',
+    title: '版本过期',
+    message: message + '\n可立即自动更新，或手动前往下载页。',
+    buttons: ['立即更新（推荐）', '打开下载页', '退出'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true
+  });
+  if (choice === 1) {
+    shell.openExternal(RELEASE_URL);
+    app.quit();
+    return;
+  }
+  if (choice === 2) {
+    app.quit();
+    return;
+  }
+
+  // 立即更新：无窗口状态下走 electron-updater，下载完自动安装重启
+  showUpdateProgressWindow();
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = true;   // 发现新版本自动下载
+  autoUpdater.forceRunAfter = true;  // 安装完成后自动重启
+  let failed = false;
+
+  autoUpdater.on('download-progress', (p) => setUpdateProgress(p.percent));
+  autoUpdater.on('update-not-available', () => {
+    // 下载页暂无新版本安装包（发布滞后时会出现）：提示后给下载页入口
+    closeUpdateProgressWindow();
+    const choice = dialog.showMessageBoxSync({
+      type: 'warning',
+      title: '暂无可用更新',
+      message: '下载页暂未发布新版本安装包，请稍后再试，或前往下载页查看。',
+      buttons: ['打开下载页', '退出'],
+      defaultId: 0,
+      noLink: true
+    });
+    if (choice === 0) shell.openExternal(RELEASE_URL);
+    app.quit();
+  });
+  autoUpdater.on('update-downloaded', () => {
+    closeUpdateProgressWindow();
+    autoUpdater.quitAndInstall(false, true); // 安装完成后强制重启
+  });
+  const onError = () => {
+    if (failed) return; // 防重复弹窗（error 事件与 checkForUpdates reject 可能都触发）
+    failed = true;
+    autoUpdater.removeAllListeners('download-progress');
+    fallbackOpenDownloadPage();
+  };
+  autoUpdater.on('error', onError);
+  autoUpdater.checkForUpdates().catch(onError);
+}
+
 // 授权通过后启动窗口和计时器
 function startApp(duration) {
   createWindow();
@@ -165,14 +281,8 @@ app.whenReady().then(async () => {
 
   if (!result.enabled) {
     if (result.needsUpdate) {
-      // 版本过旧：弹窗提示后退出
-      dialog.showMessageBoxSync({
-        type: 'warning',
-        title: '版本过期',
-        message: result.message,
-        buttons: ['确定'],
-        noLink: true
-      });
+      // 版本过期：弹窗选择后走强制更新（无窗口热更新 / 打开下载页 / 退出）
+      handleForcedUpdate(result.message);
     } else {
       // 网络错误或软件被禁用
       dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
@@ -201,13 +311,7 @@ app.on('activate', async () => {
     const result = await licenseChecker.checkLicense();
     if (!result.enabled) {
       if (result.needsUpdate) {
-        dialog.showMessageBoxSync({
-          type: 'warning',
-          title: '版本过期',
-          message: result.message,
-          buttons: ['确定'],
-          noLink: true
-        });
+        handleForcedUpdate(result.message);
       } else {
         dialog.showErrorBox('软件暂不可使用', result.message || '该软件暂不可使用，请联系管理员。');
       }
