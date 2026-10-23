@@ -125,7 +125,7 @@ function matchSpec(spec, index) {
   const key = `${spec.cap}|${spec.volt}|${spec.temp}|${spec.size}`;
   const cands = index.get(key);
   if (!cands || cands.length === 0) {
-    return { names: [], status: '未匹配' };
+    return { names: [], status: '暂无匹配' };
   }
   // 优先偏差完全一致
   const exact = cands.filter((c) => c.dev === spec.dev);
@@ -212,7 +212,7 @@ function main() {
   console.log(`  成功解析: ${nParsed}`);
   console.log(`  未解析: ${nUnparse}`);
   console.log(`  有匹配: ${nMatched} (精确 ${nExact}, 忽略偏差 ${nIgnoreDev})`);
-  console.log(`  未匹配: ${nNoMatch}`);
+  console.log(`  暂无匹配: ${nNoMatch}`);
   console.log(`  品名首字母列: [${letters.join(', ')}]`);
 
   // 诊断样本
@@ -237,7 +237,7 @@ function main() {
   }
   console.log(`\n未解析样本(前20):`);
   unparseSamples.forEach((s) => console.log('  ' + s));
-  console.log(`\n未匹配样本(前20, 去重描述):`);
+  console.log(`\n暂无匹配样本(前20, 去重描述):`);
   nomatchSamples.forEach((s) => console.log('  ' + s));
 
   // 第二遍: 组装输出 AOA (保留原表 + 追加首字母列 + 匹配数量 + 匹配状态)

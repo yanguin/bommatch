@@ -266,6 +266,17 @@ node json_to_xlsx.js
 应用使用 `electron-updater` 通过 GitHub Releases 自动更新，发布新版本时：
 
 1. 修改 `package.json` 中的 `version` 为新版本号（如 `1.4.5`）
+
+   **版本号修改位置清单**（2026-10-23 核查定谳）：
+   | 位置 | 是否要改 | 说明 |
+   |---|---|---|
+   | `package.json` → `version` | ✅ 必改 | **唯一源头**：界面标题 `v x.x.x`、打包产物命名、`latest.yml`、自动更新全部跟随它 |
+   | `package-lock.json` → 根包两处 `version`（第 3 行与 `packages."")` 内） | ✅ 同步改 | 与 `package.json` 保持一致；跑一次 `npm.cmd install` 也会自动同步 |
+   | `version.txt`（JSON `{"version": ...}`） | ❌ 不改 | 这是**授权检查配置版本**（本地与 Gitee 远端比对用），与应用版本无关，两边须一致；擅改会与 Gitee 远端失配 |
+   | `dist/` 下产物（`latest.yml`、`*.exe`、`*.blockmap`） | ❌ 不改 | 历史构建产物，`npm.cmd run build:win` 后自动生成新版本号命名 |
+   | `build/*.nsh` | ❌ 不改 | 仅注释提及版本号，无硬编码 |
+   | `README.md` 更新日志 | ✅ 顺手补 | 在「更新日志」章节追加一行本次版本说明 |
+
 2. 运行 `npm.cmd run build:win` 打包（产物自动命名为 `BOM.Setup.1.4.5.exe`，`latest.yml` 文件名自动对齐）
 3. 打开 https://github.com/yanguin/bommatch/releases/new
 4. Tag 填 `v1.4.5`，点 **Create new tag on publish**
@@ -276,6 +287,7 @@ node json_to_xlsx.js
 
 ## 更新日志
 
+- **v1.4.7** - 「未匹配」显示文案全局改为「暂无匹配」；多型号筛选「产品型号」列头筛选支持筛出暂无匹配占位行
 - **v1.4.4** - 页面标题新增版本号显示（跟随 package.json 自动更新）；热更新发布源切换至 GitHub Releases，产物统一命名 `BOM.Setup`
 - **v1.2.3** - 新增命名规则悬浮窗：右下角圆形按钮，点击查看命名规则图片，支持Ctrl+滚轮缩放（50%~300%）和标题栏拖动
 - **v1.2.2** - 优化数据更新流程：添加自动备份脚本,修复硬编码产品数量问题

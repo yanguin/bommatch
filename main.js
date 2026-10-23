@@ -101,13 +101,8 @@ function setupAutoUpdater() {
     });
   });
   autoUpdater.on('update-not-available', () => {
-    dialog.showMessageBoxSync({
-      type: 'info',
-      title: '诊断',
-      message: '已是最新版本，无需更新',
-      buttons: ['确定'],
-      noLink: true
-    });
+    // 已是最新版本：静默，不打扰用户
+    console.log('[updater] 已是最新版本，无需更新');
   });
 
   // 下载完成：隐藏进度条，弹窗询问是否立即重启安装
@@ -744,7 +739,7 @@ ipcMain.handle('filter-products-multi', async (event, { products, names, series,
         totalInputs: finalNames.length,
         matchedInputs,
         unmatchedInputs,
-        // 产品数排除"未匹配"占位行
+        // 产品数排除"暂无匹配"占位行
         productCount: result.filter(r => !r.unmatched).length
       },
       maxReached,

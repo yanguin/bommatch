@@ -1067,7 +1067,7 @@
               </div>
               <div class="stat-card">
                 <div class="stat-value">{{ stats.noMatch }}</div>
-                <div class="stat-label">未匹配</div>
+                <div class="stat-label">暂无匹配</div>
               </div>
               <div class="stat-card">
                 <div class="stat-value">{{ stats.empty }}</div>
@@ -1309,7 +1309,7 @@
               </div>
               <div class="stat-card">
                 <div class="stat-value">{{ filterMultiStats ? (filterMultiStats.totalInputs - multiMatchedInputs) : 0 }}</div>
-                <div class="stat-label">未匹配型号</div>
+                <div class="stat-label">暂无匹配型号</div>
               </div>
               <div class="stat-card">
                 <div class="stat-value">{{ filteredFilterResult.filter(r => !r.unmatched).length }}</div>
@@ -1401,7 +1401,7 @@
               </div>
               <div class="stat-card">
                 <div class="stat-value">{{ qmMultiStats ? qmMultiStats.unmatchedInputs : 0 }}</div>
-                <div class="stat-label">未匹配型号</div>
+                <div class="stat-label">暂无匹配型号</div>
               </div>
               <div class="stat-card">
                 <div class="stat-value">{{ qmMultiStats ? qmMultiStats.productCount : 0 }}</div>
@@ -1552,7 +1552,7 @@
               <el-option label="精确匹配" value="精确匹配"></el-option>
               <el-option label="忽略偏差" value="忽略偏差"></el-option>
               <el-option label="容差匹配" value="容差匹配"></el-option>
-              <el-option label="未匹配" value="未匹配"></el-option>
+              <el-option label="暂无匹配" value="暂无匹配"></el-option>
               <el-option label="未解析" value="未解析"></el-option>
             </el-select>
           </div>
@@ -1724,7 +1724,8 @@
             <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
             <!-- 多型号态：首列显示对应的输入型号 -->
             <el-table-column v-if="filterInputMode === 'multi'" prop="inputName"
-              label="输入型号" min-width="170" align="center">
+              label="输入型号" min-width="170" align="center"
+              column-key="inputName" :filters="colFilterOptions.inputName">
               <template slot-scope="scope">
                 <span style="font-weight: 600; color: var(--color-text-secondary);">{{ scope.row.inputName }}</span>
               </template>
@@ -1736,9 +1737,10 @@
                 <span :style="scope.row.hitCount > 1 ? 'font-weight: 600; color: var(--color-accent);' : ''">{{ scope.row.hitCount }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="productName" label="产品型号" min-width="190">
+            <el-table-column prop="productName" label="产品型号" min-width="190"
+              column-key="productName" :filters="colFilterOptions.productName">
               <template slot-scope="scope">
-                <span v-if="scope.row.unmatched" style="color: var(--color-text-tertiary);">未匹配</span>
+                <span v-if="scope.row.unmatched" style="color: var(--color-text-tertiary);">暂无匹配</span>
                 <span v-else style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
               </template>
             </el-table-column>

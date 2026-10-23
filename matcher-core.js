@@ -1901,7 +1901,7 @@ function matchSpec(spec, index, options = {}) {
       };
     }
     // 容差为0且偏差不一致，视为未匹配
-    return { items: [], names: [], status: '未匹配', matchType: 'none' };
+    return { items: [], names: [], status: '暂无匹配', matchType: 'none' };
   }
 
   // 容差匹配（容量在一定误差范围内）
@@ -1933,7 +1933,7 @@ function matchSpec(spec, index, options = {}) {
     };
   }
 
-  return { items: [], names: [], status: '未匹配', matchType: 'none' };
+  return { items: [], names: [], status: '暂无匹配', matchType: 'none' };
 }
 
 // ---------- 单个 sheet 的匹配处理 ----------

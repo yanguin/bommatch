@@ -1,1 +1,1 @@
-{"version": "1.3.0", "duration": 16200, "enabled": true}
+{"version": "1.4.7", "duration": 16200, "enabled": true}

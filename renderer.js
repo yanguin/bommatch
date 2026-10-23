@@ -14,6 +14,9 @@ const RESISTOR_BRAND_LABEL = {
   dayi: '大毅'
 };
 
+// 多型号态「暂无匹配」占位行的表头筛选哨兵值（占位行 productName 为空串，无法进常规选项）
+const UNMATCHED_FILTER_KEY = '__unmatched__';
+
 // ============ 表头筛选选项排序辅助 ============
 // 容量文本 → pF 数值（"680pF"→680、"3.3nF"→3300、"10uF"→1e7），解析失败返回 null
 function capacityToPf(text) {
@@ -39,6 +42,35 @@ function deviationToNum(text) {
 }
 
 // ============ 可复用结果表格骨架 ============
+// 筛选面板「值（N）」计数灰显：el-table 筛选面板（popper，挂在 body 下）只支持纯文本选项，
+// 无法在 text 里带样式；用 MutationObserver 在面板 DOM 出现/更新后把尾部「（N）」拆成灰色 span。
+// text 无「（N）」后缀的面板（如其他表格）正则不匹配，自然跳过。
+function colorizeFilterCounts() {
+  if (window.__filterCountObserver) return;
+  const pattern = /^(.+)\uff08(\d+)\uff09$/;
+  const apply = () => {
+    const labels = document.querySelectorAll('.el-table-filter-panel .el-checkbox__label');
+    for (const el of labels) {
+      if (el.dataset.countDone) continue;
+      const m = el.textContent.match(pattern);
+      if (!m) continue;
+      el.dataset.countDone = '1';
+      el.textContent = '';
+      const name = document.createElement('span');
+      name.textContent = m[1];
+      const cnt = document.createElement('span');
+      cnt.textContent = `\uff08${m[2]}\uff09`;
+      cnt.style.color = 'var(--color-text-tertiary)';
+      el.appendChild(name);
+      el.appendChild(cnt);
+    }
+  };
+  const observer = new MutationObserver(apply);
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  window.__filterCountObserver = observer;
+  apply();
+}
+
 // 统一 stripe/border/高度/表头样式，列通过默认插槽传入
 // 用法：<results-table :data="filteredXxx" v-if="..."><el-table-column .../></results-table>
 // 内置 Excel 式单元格选区：拖拽画矩形选区，Ctrl+C 复制为 TSV（可直贴 Excel）
@@ -73,6 +105,7 @@ Vue.component('results-table', {
   mounted() {
     document.addEventListener('copy', this.onCopy);
     document.addEventListener('keydown', this.onKeydown);
+    colorizeFilterCounts();
   },
   beforeDestroy() {
     document.removeEventListener('copy', this.onCopy);
@@ -294,7 +327,7 @@ new Vue({
       filterResult: null,
       filterSearchText: '',
       // 表头列筛选勾选值（key=列 column-key，值=勾选项数组；与搜索框叠加 AND 过滤）
-      colFilterActive: { size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] },
+      colFilterActive: { productName: [], inputName: [], size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] },
       // 型号筛选结果表格勾选的行（用于规格书批量下载/浏览器打开）
       specSelectedRows: [],
 
@@ -406,19 +439,26 @@ new Vue({
 
     // 表头筛选选项：按当前查询结果动态去重生成（非硬编码），容量/偏差/电压按数值序
     colFilterOptions() {
-      const empty = { size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] };
+      const empty = { productName: [], inputName: [], size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] };
       if (!this.filterResult) return empty;
       const pick = (field, sortFn) => {
-        const set = new Set();
+        // 值 → 行数计数，下拉选项显示「值（N）」，value 保持原值不影响过滤
+        const countMap = new Map();
         for (const r of this.filterResult) {
           const v = r[field];
-          if (v !== undefined && v !== null && v !== '') set.add(v);
+          if (v !== undefined && v !== null && v !== '') countMap.set(v, (countMap.get(v) || 0) + 1);
         }
-        const arr = [...set];
+        const arr = [...countMap.keys()];
         arr.sort(sortFn || ((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
-        return arr.map(v => ({ text: String(v), value: v }));
+        return arr.map(v => ({ text: `${v}（${countMap.get(v)}）`, value: v }));
       };
+      const productOpts = pick('productName'); // 字符串序
+      // 暂无匹配占位行 productName 为空串，pick 取不到；补哨兵选项，让表头能筛出暂无匹配行
+      const unmatchedCount = this.filterResult.filter(r => r.unmatched).length;
+      if (unmatchedCount > 0) productOpts.push({ text: `暂无匹配（${unmatchedCount}）`, value: UNMATCHED_FILTER_KEY });
       return {
+        productName: productOpts,
+        inputName: pick('inputName'),     // 多型号态才有值；单型号态该列不渲染，空数组无碍
         size: pick('size'), // 字符串序即英寸码序（01005 < 0201 < 0402 < ...）
         tempCharacteristics: pick('tempCharacteristics'),
         capacity: pick('capacity', makeNumericSort(capacityToPf)),
@@ -438,7 +478,11 @@ new Vue({
       for (const field of Object.keys(this.colFilterActive)) {
         const vals = this.colFilterActive[field];
         if (vals && vals.length > 0) {
-          results = results.filter(item => vals.includes(item[field]));
+          results = results.filter(item => {
+            // 暂无匹配占位行 productName 为空，映射到哨兵值参与比较
+            const v = (field === 'productName' && item.unmatched) ? UNMATCHED_FILTER_KEY : item[field];
+            return vals.includes(v);
+          });
         }
       }
 
@@ -458,7 +502,7 @@ new Vue({
     },
 
     // 多型号态：当前视图（搜索后）仍有命中行的输入数（按 inputIndex 去重）。
-    // 未匹配型号 = 输入总数 - 本值，使统计与表格中的"未匹配"占位行口径一致
+    // 暂无匹配型号 = 输入总数 - 本值，使统计与表格中的"暂无匹配"占位行口径一致
     multiMatchedInputs() {
       if (this.filterInputMode !== 'multi' || !this.filterResult) return 0;
       const set = new Set();
@@ -870,9 +914,9 @@ new Vue({
       else if (cmd === 'copyDetail') this.copySelectedDetails();
     },
 
-    // 复制勾选行的产品型号（多行换行分隔；未匹配行复制"未匹配"）
+    // 复制勾选行的产品型号（多行换行分隔；暂无匹配行复制"暂无匹配"）
     copySelectedModels() {
-      const names = this.specSelectedRows.map(r => r.productName || (r.unmatched ? '未匹配' : '')).filter(Boolean);
+      const names = this.specSelectedRows.map(r => r.productName || (r.unmatched ? '暂无匹配' : '')).filter(Boolean);
       if (names.length === 0) {
         this.$message.warning('勾选的行没有可复制的产品型号');
         return;
@@ -880,16 +924,16 @@ new Vue({
       clipboard.writeText(names.join('\n'));
       let msg = `已复制 ${names.length} 个产品型号`;
       const unmatched = this.specSelectedRows.filter(r => r.unmatched).length;
-      if (unmatched > 0) msg += `（含 ${unmatched} 个未匹配的输入型号）`;
+      if (unmatched > 0) msg += `（含 ${unmatched} 个暂无匹配的输入型号）`;
       this.$message.success(msg);
     },
 
     // 复制勾选行的详细信息：型号/英寸尺寸/温度特性/容量/偏差/电压（如 T104K0201X5R100NJT/0201/X5R/100nF/±10%/10V）
     // 尺寸取英寸码（0201/1005M → 0201），温度特性取代码（X5R(-55℃~85℃) → X5R），电压补 V；空段自动省略；多行换行分隔
-    // 未匹配行无规格，只复制"未匹配"
+    // 暂无匹配行无规格，只复制"暂无匹配"
     copySelectedDetails() {
       const lines = this.specSelectedRows.map(r => [
-        r.productName || (r.unmatched ? '未匹配' : ''),
+        r.productName || (r.unmatched ? '暂无匹配' : ''),
         String(r.size || '').split('/')[0],
         String(r.tempCharacteristics || '').split('(')[0],
         r.capacity || '',
@@ -1361,7 +1405,7 @@ new Vue({
             data: this.filteredFilterResult.map(item => ({
               '输入型号': item.inputName || '',
               '命中产品数': item.hitCount !== undefined ? item.hitCount : '',
-              '产品型号': item.unmatched ? '未匹配' : (item.productName || ''),
+              '产品型号': item.unmatched ? '暂无匹配' : (item.productName || ''),
               '产品特点': item.features || '',
               '尺寸(Inch/mm)': item.size || '',
               '温度特性': item.tempCharacteristics || '',
@@ -1398,7 +1442,7 @@ new Vue({
         '精确匹配': 'success',
         '忽略偏差': 'primary',
         '容差匹配': 'warning',
-        '未匹配': 'info',
+        '暂无匹配': 'info',
         '未解析': 'danger',
         '空描述': 'info'
       };
