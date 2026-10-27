@@ -479,6 +479,26 @@
       flex: 1;
     }
 
+    /* 精确/范围模式切换：标题与切换器同行 */
+    .filter-mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .filter-mode-row .filter-section-title {
+      margin-bottom: 0;
+    }
+    .filter-mode-row .el-radio-button__inner {
+      padding: 3px 10px;
+      font-size: 12px;
+    }
+    .filter-mode-row .el-radio-button__orig-radio:checked + .el-radio-button__inner {
+      background-color: var(--color-accent);
+      border-color: var(--color-accent);
+      box-shadow: -1px 0 0 0 var(--color-accent);
+    }
+
     /* 统一单位框样式 */
     .unit-box {
       padding: 6px 12px;
@@ -1221,8 +1241,15 @@
 
           <!-- 标称容量 -->
           <div class="filter-section">
-            <div class="filter-section-title">标称容量</div>
-            <div class="filter-input-group">
+            <div class="filter-mode-row">
+              <div class="filter-section-title">标称容量</div>
+              <el-radio-group v-model="filterForm.capacityMode" size="mini">
+                <el-radio-button label="exact">精确</el-radio-button>
+                <el-radio-button label="range">范围</el-radio-button>
+              </el-radio-group>
+            </div>
+            <!-- 精确模式：单值 -->
+            <div v-if="filterForm.capacityMode !== 'range'" class="filter-input-group">
               <el-input v-model="filterForm.capacityValue" placeholder="输入数值" size="small"></el-input>
               <el-select v-model="filterForm.capacityUnit" size="small" style="width: 70px;">
                 <el-option label="pF" value="pF"></el-option>
@@ -1230,6 +1257,25 @@
                 <el-option label="uF" value="uF"></el-option>
               </el-select>
             </div>
+            <!-- 范围模式：from ~ to 闭区间，边界留空=开区间，单位两行共用 -->
+            <template v-else>
+              <div class="filter-input-group">
+                <el-input v-model="filterForm.capacityFrom" placeholder="from（含）" size="small"></el-input>
+                <el-select v-model="filterForm.capacityUnit" size="small" style="width: 70px;">
+                  <el-option label="pF" value="pF"></el-option>
+                  <el-option label="nF" value="nF"></el-option>
+                  <el-option label="uF" value="uF"></el-option>
+                </el-select>
+              </div>
+              <div class="filter-input-group" style="margin-top: 8px;">
+                <el-input v-model="filterForm.capacityTo" placeholder="to（含）" size="small"></el-input>
+                <el-select v-model="filterForm.capacityToUnit" size="small" style="width: 70px;">
+                  <el-option label="pF" value="pF"></el-option>
+                  <el-option label="nF" value="nF"></el-option>
+                  <el-option label="uF" value="uF"></el-option>
+                </el-select>
+              </div>
+            </template>
           </div>
 
           <!-- 容量偏差 -->
@@ -1250,11 +1296,29 @@
 
           <!-- 额定电压 -->
           <div class="filter-section">
-            <div class="filter-section-title">额定电压</div>
-            <div class="filter-input-group">
+            <div class="filter-mode-row">
+              <div class="filter-section-title">额定电压</div>
+              <el-radio-group v-model="filterForm.voltageMode" size="mini">
+                <el-radio-button label="exact">精确</el-radio-button>
+                <el-radio-button label="range">范围</el-radio-button>
+              </el-radio-group>
+            </div>
+            <!-- 精确模式：单值 -->
+            <div v-if="filterForm.voltageMode !== 'range'" class="filter-input-group">
               <el-input v-model="filterForm.voltageValue" placeholder="输入数值" size="small"></el-input>
               <div class="unit-box">Vdc</div>
             </div>
+            <!-- 范围模式：from ~ to 闭区间，边界留空=开区间 -->
+            <template v-else>
+              <div class="filter-input-group">
+                <el-input v-model="filterForm.voltageFrom" placeholder="from（含）" size="small"></el-input>
+                <div class="unit-box">Vdc</div>
+              </div>
+              <div class="filter-input-group" style="margin-top: 8px;">
+                <el-input v-model="filterForm.voltageTo" placeholder="to（含）" size="small"></el-input>
+                <div class="unit-box">Vdc</div>
+              </div>
+            </template>
           </div>
 
           <!-- 产品特点开关 -->

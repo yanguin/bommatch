@@ -347,10 +347,17 @@ new Vue({
         series: [],
         sizes: [],
         temps: [],
+        capacityMode: 'exact',   // exact 精确值 / range 闭区间
         capacityValue: '',
         capacityUnit: 'pF',
+        capacityFrom: '',
+        capacityTo: '',
+        capacityToUnit: 'pF',    // to 端独立单位（可与 from 不同，后端各自换算成 pF）
         deviations: [],
+        voltageMode: 'exact',    // exact 精确值 / range 闭区间
         voltageValue: '',
+        voltageFrom: '',
+        voltageTo: '',
         rf: false,
         highPower: false,
         softTerminal: false
@@ -1361,9 +1368,10 @@ new Vue({
           }
         }
 
-        // 4. 容量值和单位转换
+        // 4. 容量值和单位转换（回填固定走精确模式）
         if (spec.cap !== null) {
           const capPf = spec.cap;
+          this.filterForm.capacityMode = 'exact';
           // 根据大小选择合适的单位显示
           if (capPf >= 1e6) {
             // >= 1uF，显示 uF
@@ -1400,8 +1408,9 @@ new Vue({
           }
         }
 
-        // 6. 电压值
+        // 6. 电压值（回填固定走精确模式）
         if (spec.volt !== null) {
+          this.filterForm.voltageMode = 'exact';
           this.filterForm.voltageValue = spec.volt.toString();
         }
 
@@ -1587,10 +1596,17 @@ new Vue({
         series: [],
         sizes: [],
         temps: [],
+        capacityMode: 'exact',
         capacityValue: '',
         capacityUnit: 'pF',
+        capacityFrom: '',
+        capacityTo: '',
+        capacityToUnit: 'pF',
         deviations: [],
+        voltageMode: 'exact',
         voltageValue: '',
+        voltageFrom: '',
+        voltageTo: '',
         rf: false,
         highPower: false,
         softTerminal: false

@@ -496,8 +496,10 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
       (filterForm.sizes && filterForm.sizes.length > 0) ||
       (filterForm.temps && filterForm.temps.length > 0) ||
       filterForm.capacityValue ||
+      (filterForm.capacityMode === 'range' && (filterForm.capacityFrom || filterForm.capacityTo)) ||
       (filterForm.deviations && filterForm.deviations.length > 0) ||
       filterForm.voltageValue ||
+      (filterForm.voltageMode === 'range' && (filterForm.voltageFrom || filterForm.voltageTo)) ||
       filterForm.rf ||
       filterForm.highPower ||
       filterForm.softTerminal;
@@ -517,20 +519,46 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
     const selectedTemps = filterForm.temps || [];
     const selectedDevs = filterForm.deviations || [];
 
-    // 容量预处理
+    // 容量数值 → pF 换算（nF/uF 与 pF 共用）
+    const capValToPf = (val, unit) => {
+      if (unit === 'nF') return val * 1e3;
+      if (unit === 'uF') return val * 1e6;
+      return val;
+    };
+
+    // 容量预处理：exact 精确值 / range 闭区间（边界可留空=开区间）
     let targetPf = null;
-    if (filterForm.capacityValue) {
+    let capFromPf = null;
+    let capToPf = null;
+    if (filterForm.capacityMode === 'range') {
+      const f = parseFloat(filterForm.capacityFrom);
+      const t = parseFloat(filterForm.capacityTo);
+      if (!isNaN(f)) capFromPf = capValToPf(f, filterForm.capacityUnit);
+      // to 端独立单位（旧表单无此字段时回退共用 capacityUnit）
+      if (!isNaN(t)) capToPf = capValToPf(t, filterForm.capacityToUnit || filterForm.capacityUnit);
+      if (capFromPf !== null && capToPf !== null && capFromPf > capToPf) {
+        return { error: '标称容量范围无效：下限（from）大于上限（to）' };
+      }
+    } else if (filterForm.capacityValue) {
       const inputVal = parseFloat(filterForm.capacityValue);
       if (!isNaN(inputVal)) {
-        targetPf = inputVal;
-        if (filterForm.capacityUnit === 'nF') targetPf = inputVal * 1e3;
-        else if (filterForm.capacityUnit === 'uF') targetPf = inputVal * 1e6;
+        targetPf = capValToPf(inputVal, filterForm.capacityUnit);
       }
     }
 
-    // 电压预处理
+    // 电压预处理：exact 精确值 / range 闭区间（边界可留空=开区间）
     let targetVolt = null;
-    if (filterForm.voltageValue) {
+    let voltFrom = null;
+    let voltTo = null;
+    if (filterForm.voltageMode === 'range') {
+      const f = parseFloat(filterForm.voltageFrom);
+      const t = parseFloat(filterForm.voltageTo);
+      if (!isNaN(f)) voltFrom = f;
+      if (!isNaN(t)) voltTo = t;
+      if (voltFrom !== null && voltTo !== null && voltFrom > voltTo) {
+        return { error: '额定电压范围无效：下限（from）大于上限（to）' };
+      }
+    } else if (filterForm.voltageValue) {
       const inputVolt = parseFloat(filterForm.voltageValue);
       if (!isNaN(inputVolt)) {
         targetVolt = inputVolt;
@@ -585,8 +613,8 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
         if (!matched) continue;
       }
 
-      // 标称容量过滤
-      if (targetPf !== null) {
+      // 标称容量过滤（exact 精确 / range 闭区间，容差 ±0.001pF 兜浮点误差）
+      if (targetPf !== null || capFromPf !== null || capToPf !== null) {
         const itemCap = item.capacity || '';
         const m = itemCap.match(/^([0-9.]+)\s*(pF|nF|uF|µF|mF|p|n|u|µ)$/i);
         if (!m) continue;
@@ -598,7 +626,12 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
         else if (u === 'uf' || u === 'µf' || u === 'u' || u === 'µ') itemPf *= 1e6;
         else if (u === 'mf') itemPf *= 1e9;
 
-        if (Math.abs(itemPf - targetPf) > 0.001) continue;
+        if (targetPf !== null) {
+          if (Math.abs(itemPf - targetPf) > 0.001) continue;
+        } else {
+          if (capFromPf !== null && itemPf < capFromPf - 0.001) continue;
+          if (capToPf !== null && itemPf > capToPf + 0.001) continue;
+        }
       }
 
       // 容量偏差过滤
@@ -615,10 +648,16 @@ ipcMain.handle('filter-products', async (event, { products, filterForm, productN
         if (!matched) continue;
       }
 
-      // 额定电压过滤
-      if (targetVolt !== null) {
+      // 额定电压过滤（exact 精确 / range 闭区间）
+      if (targetVolt !== null || voltFrom !== null || voltTo !== null) {
         const itemVolt = parseFloat(item.voltage);
-        if (isNaN(itemVolt) || Math.abs(itemVolt - targetVolt) > 0.001) continue;
+        if (isNaN(itemVolt)) continue;
+        if (targetVolt !== null) {
+          if (Math.abs(itemVolt - targetVolt) > 0.001) continue;
+        } else {
+          if (voltFrom !== null && itemVolt < voltFrom - 0.001) continue;
+          if (voltTo !== null && itemVolt > voltTo + 0.001) continue;
+        }
       }
 
       // 产品特点过滤（射频/高功率/软端子）
