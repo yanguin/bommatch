@@ -41,36 +41,72 @@ function deviationToNum(text) {
   return isNaN(n) ? null : n;
 }
 
-// ============ 可复用结果表格骨架 ============
-// 筛选面板「值（N）」计数灰显：el-table 筛选面板（popper，挂在 body 下）只支持纯文本选项，
-// 无法在 text 里带样式；用 MutationObserver 在面板 DOM 出现/更新后把尾部「（N）」拆成灰色 span。
-// text 无「（N）」后缀的面板（如其他表格）正则不匹配，自然跳过。
-function colorizeFilterCounts() {
-  if (window.__filterCountObserver) return;
-  const pattern = /^(.+)\uff08(\d+)\uff09$/;
-  const apply = () => {
-    const labels = document.querySelectorAll('.el-table-filter-panel .el-checkbox__label');
-    for (const el of labels) {
-      if (el.dataset.countDone) continue;
-      const m = el.textContent.match(pattern);
-      if (!m) continue;
-      el.dataset.countDone = '1';
-      el.textContent = '';
-      const name = document.createElement('span');
-      name.textContent = m[1];
-      const cnt = document.createElement('span');
-      cnt.textContent = `\uff08${m[2]}\uff09`;
-      cnt.style.color = 'var(--color-text-tertiary)';
-      el.appendChild(name);
-      el.appendChild(cnt);
+// ============ 自定义表头列筛选面板 ============
+// Element UI 内置筛选面板（el-table-filter-panel）不支持自定义内容，加不了搜索框；
+// 改为自定义表头组件：顶部搜索框实时过滤选项，勾选后点「筛选」生效、「重置」即清空，
+// 结果经 apply 事件交根实例写入 colFilterActive（行过滤复用 filteredFilterResult 原路径）。
+Vue.component('col-filter-head', {
+  props: {
+    field: { type: String, required: true },      // 列字段名（colFilterActive 的 key）
+    label: { type: String, required: true },      // 列标题
+    options: { type: Array, default: () => [] },  // [{ text, value, name, count }]
+    active: { type: Array, default: () => [] }    // 已生效勾选值
+  },
+  data() {
+    return { search: '', draft: [], visible: false };
+  },
+  computed: {
+    // 搜索实时过滤选项（按选项名匹配，大小写不敏感）
+    shown() {
+      const kw = this.search.trim().toLowerCase();
+      if (!kw) return this.options;
+      return this.options.filter(o => o.name.toLowerCase().includes(kw));
     }
-  };
-  const observer = new MutationObserver(apply);
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  window.__filterCountObserver = observer;
-  apply();
-}
+  },
+  methods: {
+    // 每次打开面板：草稿同步已生效值、清空搜索（未点「筛选」关闭即放弃本次勾选）
+    onShow() {
+      this.draft = [...this.active];
+      this.search = '';
+    },
+    apply() {
+      this.$emit('apply', this.field, [...this.draft]);
+      this.visible = false;
+    },
+    reset() {
+      this.draft = [];
+      this.$emit('apply', this.field, []);
+    }
+  },
+  template: `
+    <span class="col-filter-head">
+      <span>{{ label }}</span>
+      <el-popover placement="bottom" trigger="click" width="230"
+        popper-class="col-filter-popper" v-model="visible" @show="onShow">
+        <div class="col-filter-panel">
+          <el-input v-model="search" size="mini" placeholder="输入内容实时筛选"
+            clearable prefix-icon="el-icon-search"></el-input>
+          <div class="col-filter-list">
+            <el-checkbox-group v-model="draft">
+              <el-checkbox v-for="opt in shown" :key="opt.value" :label="opt.value">
+                <span>{{ opt.name }}</span><span class="opt-count">（{{ opt.count }}）</span>
+              </el-checkbox>
+            </el-checkbox-group>
+            <div v-if="shown.length === 0" class="col-filter-empty">无匹配选项</div>
+          </div>
+          <div class="col-filter-btns">
+            <el-button type="primary" size="mini" @click="apply">筛选</el-button>
+            <el-button size="mini" @click="reset">重置</el-button>
+          </div>
+        </div>
+        <i slot="reference" class="el-icon-filter col-filter-icon"
+          :class="{ active: active.length > 0 }" title="筛选"></i>
+      </el-popover>
+    </span>
+  `
+});
 
+// ============ 可复用结果表格骨架 ============
 // 统一 stripe/border/高度/表头样式，列通过默认插槽传入
 // 用法：<results-table :data="filteredXxx" v-if="..."><el-table-column .../></results-table>
 // 内置 Excel 式单元格选区：拖拽画矩形选区，Ctrl+C 复制为 TSV（可直贴 Excel）
@@ -105,7 +141,6 @@ Vue.component('results-table', {
   mounted() {
     document.addEventListener('copy', this.onCopy);
     document.addEventListener('keydown', this.onKeydown);
-    colorizeFilterCounts();
   },
   beforeDestroy() {
     document.removeEventListener('copy', this.onCopy);
@@ -519,12 +554,12 @@ new Vue({
         }
         const arr = [...countMap.keys()];
         arr.sort(sortFn || ((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
-        return arr.map(v => ({ text: `${v}（${countMap.get(v)}）`, value: v }));
+        return arr.map(v => ({ text: `${v}（${countMap.get(v)}）`, value: v, name: String(v), count: countMap.get(v) }));
       };
       const productOpts = pick('productName'); // 字符串序
       // 暂无匹配占位行 productName 为空串，pick 取不到；补哨兵选项，让表头能筛出暂无匹配行
       const unmatchedCount = this.filterResult.filter(r => r.unmatched).length;
-      if (unmatchedCount > 0) productOpts.push({ text: `暂无匹配（${unmatchedCount}）`, value: UNMATCHED_FILTER_KEY });
+      if (unmatchedCount > 0) productOpts.push({ text: `暂无匹配（${unmatchedCount}）`, value: UNMATCHED_FILTER_KEY, name: '暂无匹配', count: unmatchedCount });
       return {
         productName: productOpts,
         inputName: pick('inputName'),     // 多型号态才有值；单型号态该列不渲染，空数组无碍
@@ -1439,25 +1474,16 @@ new Vue({
       }
     },
 
-    // 表头列筛选变化：payload 形如 { size: ['0603/1608M'], capacity: ['680pF'] }，key 为列 column-key
-    onFilterColChange(filters) {
-      for (const key of Object.keys(filters)) {
-        if (Object.prototype.hasOwnProperty.call(this.colFilterActive, key)) {
-          this.colFilterActive[key] = filters[key] || [];
-        }
-      }
+    // 自定义列筛选：面板点「筛选/重置」后回传（field 对应 colFilterActive 的 key）
+    onColFilterApply(field, vals) {
+      this.colFilterActive[field] = vals;
     },
 
-    // 重置表头列筛选：清勾选值 + 清面板 UI（表格未重建时面板勾选状态会残留）
+    // 重置表头列筛选：清勾选值（各面板打开时会从 active 重新同步草稿，无需额外清面板 UI）
     resetColFilters() {
       for (const key of Object.keys(this.colFilterActive)) {
         this.colFilterActive[key] = [];
       }
-      this.$nextTick(() => {
-        const rt = this.$refs.filterResultsTable;
-        const inner = rt && rt.$refs.innerTable;
-        if (inner) inner.clearFilter();
-      });
     },
 
     // 筛选共享逻辑：加载产品 → 调用 IPC → 处理结果

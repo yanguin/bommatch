@@ -50,9 +50,21 @@ function fetch(url) {
   try {
     Vue.compile(tpl);
     console.log('PASS  index.html #app 模板编译通过');
-    process.exit(0);
   } catch (err) {
     console.error('FAIL  模板编译错误: ' + err.message);
+    process.exit(1);
+  }
+
+  // 另编译 renderer.js 里的 col-filter-head 组件模板（自定义表头列筛选面板）
+  const rjs = fs.readFileSync('renderer.js', 'utf8');
+  const cm = rjs.match(/Vue\.component\('col-filter-head',\s*\{[\s\S]*?template:\s*`([\s\S]*?)`\s*\}\);/);
+  if (!cm) { console.error('FAIL  未找到 col-filter-head 组件模板'); process.exit(1); }
+  try {
+    Vue.compile(cm[1]);
+    console.log('PASS  renderer.js col-filter-head 组件模板编译通过');
+    process.exit(0);
+  } catch (err) {
+    console.error('FAIL  组件模板编译错误: ' + err.message);
     process.exit(1);
   }
 })().catch(e => { console.error('FAIL  ' + e.message); process.exit(1); });

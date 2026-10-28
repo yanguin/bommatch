@@ -416,6 +416,48 @@
       margin-bottom: var(--spacing-form-item);
     }
 
+    /* 自定义表头列筛选面板（col-filter-head 组件） */
+    .col-filter-head {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .col-filter-icon {
+      cursor: pointer;
+      color: var(--color-text-tertiary);
+    }
+    .col-filter-icon:hover,
+    .col-filter-icon.active {
+      color: var(--color-accent);
+    }
+    .col-filter-panel .col-filter-list {
+      max-height: 240px;
+      overflow-y: auto;
+      margin: 8px 0;
+      border-top: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border);
+      padding: 4px 0;
+    }
+    .col-filter-panel .col-filter-list .el-checkbox {
+      display: flex;
+      margin: 0;
+      padding: 3px 8px;
+    }
+    .col-filter-panel .opt-count {
+      color: var(--color-text-tertiary);
+    }
+    .col-filter-panel .col-filter-empty {
+      color: var(--color-text-tertiary);
+      font-size: 12px;
+      text-align: center;
+      padding: 8px 0;
+    }
+    .col-filter-panel .col-filter-btns {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
     .filter-section-title {
       font-size: var(--font-size-label);
       font-weight: var(--font-weight-section-title);
@@ -1784,16 +1826,19 @@
             ref="filterResultsTable"
             v-if="currentBrand === 'weirong' && activeMode === 'filter' && filterResult"
             :data="filteredFilterResult"
-            @selection-change="onSpecSelectionChange"
-            @filter-change="onFilterColChange">
+            @selection-change="onSpecSelectionChange">
             <!-- 勾选列：用于规格书批量下载；sel-col 供选区复制/高亮跳过 -->
             <el-table-column type="selection" width="42" align="center" resizable="false"
               class-name="sel-col" label-class-name="sel-col"></el-table-column>
             <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
             <!-- 多型号态：首列显示对应的输入型号 -->
             <el-table-column v-if="filterInputMode === 'multi'" prop="inputName"
-              label="输入型号" min-width="170" align="center"
-              column-key="inputName" :filters="colFilterOptions.inputName">
+              min-width="170" align="center">
+              <template slot="header">
+                <col-filter-head field="inputName" label="输入型号"
+                  :options="colFilterOptions.inputName" :active="colFilterActive.inputName"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span style="font-weight: 600; color: var(--color-text-secondary);">{{ scope.row.inputName }}</span>
               </template>
@@ -1805,8 +1850,12 @@
                 <span :style="scope.row.hitCount > 1 ? 'font-weight: 600; color: var(--color-accent);' : ''">{{ scope.row.hitCount }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="productName" label="产品型号" min-width="190"
-              column-key="productName" :filters="colFilterOptions.productName">
+            <el-table-column prop="productName" min-width="190">
+              <template slot="header">
+                <col-filter-head field="productName" label="产品型号"
+                  :options="colFilterOptions.productName" :active="colFilterActive.productName"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.unmatched" style="color: var(--color-text-tertiary);">暂无匹配</span>
                 <span v-else style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
@@ -1820,16 +1869,41 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="size" label="尺寸(Inch/mm)" min-width="140"
-              column-key="size" :filters="colFilterOptions.size"></el-table-column>
-            <el-table-column prop="tempCharacteristics" label="温度特性" width="100" align="center"
-              column-key="tempCharacteristics" :filters="colFilterOptions.tempCharacteristics"></el-table-column>
-            <el-table-column prop="capacity" label="标称容量" min-width="120"
-              column-key="capacity" :filters="colFilterOptions.capacity"></el-table-column>
-            <el-table-column prop="capacityDeviation" label="容量偏差" width="100" align="center"
-              column-key="capacityDeviation" :filters="colFilterOptions.capacityDeviation"></el-table-column>
-            <el-table-column prop="voltage" label="额定电压(Vdc)" width="130" align="center"
-              column-key="voltage" :filters="colFilterOptions.voltage"></el-table-column>
+            <el-table-column prop="size" min-width="140">
+              <template slot="header">
+                <col-filter-head field="size" label="尺寸(Inch/mm)"
+                  :options="colFilterOptions.size" :active="colFilterActive.size"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="tempCharacteristics" width="100" align="center">
+              <template slot="header">
+                <col-filter-head field="tempCharacteristics" label="温度特性"
+                  :options="colFilterOptions.tempCharacteristics" :active="colFilterActive.tempCharacteristics"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="capacity" min-width="120">
+              <template slot="header">
+                <col-filter-head field="capacity" label="标称容量"
+                  :options="colFilterOptions.capacity" :active="colFilterActive.capacity"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="capacityDeviation" width="100" align="center">
+              <template slot="header">
+                <col-filter-head field="capacityDeviation" label="容量偏差"
+                  :options="colFilterOptions.capacityDeviation" :active="colFilterActive.capacityDeviation"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="voltage" width="130" align="center">
+              <template slot="header">
+                <col-filter-head field="voltage" label="额定电压(Vdc)"
+                  :options="colFilterOptions.voltage" :active="colFilterActive.voltage"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
             <!-- 规格书列 -->
             <el-table-column label="规格书" width="80" align="center">
               <template slot-scope="scope">
