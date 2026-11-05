@@ -5,7 +5,7 @@
 ## 一、项目目标
 BOM 型号匹配桌面工具（Electron + Vue2 + Element UI，Node 侧 `matcher-core.js` 做解析匹配）。
 把「别家型号 / 物料描述」翻译成规格，再换算成可替代的国产料号：
-- **微容 viiyong MLCC**：输入他牌型号 / 物料描述 → 微容料号（`data/viiyong_products_full.json`，当前 22500 条）。
+- **微容 viiyong MLCC**：输入他牌型号 / 物料描述 → 微容料号（`data/viiyong_products_full.json`，当前 22473 条）。
 - **大毅 TA-I 电阻**：输入国巨/KOA/ROHM/VISHAY/PROSEMI → 大毅型号（`matcher-resistor.js`）。
 
 数据维护流程：`scripts/fetch_full.js` 拉取官网 → 覆盖 `data/viiyong_products_full.json` → 技能 `build_data.js` 重建精简库。
@@ -27,7 +27,7 @@ BOM 型号匹配桌面工具（Electron + Vue2 + Element UI，Node 侧 `matcher-
    - `node scripts/_test_dayi.js`（大毅电阻，基线 207 PASS / 0 FAIL，含回环自检）
    - `node scripts/_test_multi_filter.js`（多型号筛选）
    - 若在技能目录，`node scripts/_test_dayi.js` 同理。
-3. **数据一致**：改了数据后数量/抽样正确（如 `22500`，无重复料号）。
+3. **数据一致**：改了数据后数量/抽样正确（如 `22473`，无重复料号）。
 4. **行为对齐意图**：业务逻辑变了但测试不会失败 → 该测试是错的，必须先修测试再谈通过。
 
 ## 四、修改前必须遵守的规则（本会话永久生效）
