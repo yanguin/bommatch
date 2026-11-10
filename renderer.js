@@ -412,6 +412,9 @@ new Vue({
       // 自定义复制格式弹窗（编辑态本身即一份格式配置，可直接用于填充）
       copyDlg: { visible: false, name: '', tokens: [], sep: '/', capUpper: false, sizeSmd: false, rowSep: 'n' },
 
+      // 产品库管理弹窗（导入/恢复默认）
+      dataDlg: { visible: false, loading: false, info: null },
+
       // 型号筛选输入模式：single 单型号 / multi 多型号
       filterInputMode: 'single',
       // 多型号 textarea 内容
@@ -748,6 +751,55 @@ new Vue({
         return false;
       } finally {
         this.loading = false;
+      }
+    },
+
+    // ===== 产品库管理（应用内导入 / 恢复默认） =====
+    async openDataDlg() {
+      this.dataDlg.visible = true;
+      this.dataDlg.loading = true;
+      try {
+        this.dataDlg.info = await ipcRenderer.invoke('get-data-source');
+      } catch (err) {
+        this.$message.error('读取数据源状态失败: ' + err.message);
+      } finally {
+        this.dataDlg.loading = false;
+      }
+    },
+
+    async importData() {
+      try {
+        const r = await ipcRenderer.invoke('import-products');
+        if (r.canceled) return;
+        if (r.error) {
+          this.$message.error(r.error);
+          return;
+        }
+        this.products = null; // 置空，下次匹配时自动重新加载新库
+        this.dataDlg.info = await ipcRenderer.invoke('get-data-source');
+        this.$message.success(`导入成功，产品库已更新为 ${r.total} 条`);
+      } catch (err) {
+        this.$message.error('导入失败: ' + err.message);
+      }
+    },
+
+    async resetData() {
+      try {
+        await this.$confirm('确定恢复为安装内置产品库吗？导入的库文件将被删除。', '恢复默认库', { type: 'warning' });
+      } catch (e) {
+        return; // 用户取消
+      }
+      try {
+        const r = await ipcRenderer.invoke('reset-products');
+        if (r.error) {
+          this.$message.error(r.error);
+          return;
+        }
+        this.products = null;
+        this.dataDlg.info = await ipcRenderer.invoke('get-data-source');
+        this.$message.success('已恢复默认产品库');
+      } catch (err) {
+        this.$message.error('恢复默认库失败: ' + err.message);
       }
     },
 

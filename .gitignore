@@ -28,3 +28,6 @@ Thumbs.db
 
 # 废弃的 Gitee 热更新发布目录（已切换 GitHub Releases）
 updates/
+
+# 本地诊断临时目录
+.tmp_diag/

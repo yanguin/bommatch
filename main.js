@@ -343,16 +343,29 @@ ipcMain.handle('save-file', async (event, defaultName) => {
 });
 
 // 加载 JSON 产品数据（复用：viiyong / 强茂）
-function loadJsonData(relativePath, notFoundMsg) {
-  const jsonPath = path.join(__dirname, relativePath);
-  if (!fs.existsSync(jsonPath)) {
-    return { error: notFoundMsg };
-  }
+// 读取优先级：用户数据目录（应用内导入）→ 安装目录 resources（打包内置）→ 项目 data（开发/兜底）
+function getDataFileCandidates(relativePath) {
+  const candidates = [];
   try {
-    return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-  } catch (err) {
-    return { error: `产品数据解析失败: ${err.message}` };
+    candidates.push(path.join(app.getPath('userData'), relativePath));
+  } catch (e) { /* userData 未就绪时跳过 */ }
+  if (app.isPackaged) {
+    candidates.push(path.join(process.resourcesPath, relativePath));
   }
+  candidates.push(path.join(__dirname, relativePath));
+  return candidates;
+}
+
+function loadJsonData(relativePath, notFoundMsg) {
+  for (const jsonPath of getDataFileCandidates(relativePath)) {
+    if (!fs.existsSync(jsonPath)) continue;
+    try {
+      return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+    } catch (err) {
+      return { error: `产品数据解析失败: ${err.message}` };
+    }
+  }
+  return { error: notFoundMsg };
 }
 
 // 返回应用当前版本号（读取 package.json 的 version，发布新版本后自动跟随）
@@ -368,6 +381,76 @@ ipcMain.handle('load-products', async (event) => {
 // 加载强茂产品数据
 ipcMain.handle('load-qm-products', async (event) => {
   return loadJsonData('data/qiangmao_products.json', '强茂产品数据文件不存在');
+});
+
+// 校验产品库 JSON（导入前防呆）：结构与字段合格才允许覆盖本地库
+function validateProductJson(raw) {
+  if (!raw || typeof raw !== 'object') return { ok: false, msg: '文件不是有效的 JSON 对象' };
+  const total = Number(raw.total);
+  if (!Array.isArray(raw.list) || raw.list.length === 0) return { ok: false, msg: '缺少 list 数据或 list 为空' };
+  if (raw.list.length !== total) return { ok: false, msg: `total(${total}) 与 list 条数(${raw.list.length}) 不一致` };
+  const seen = new Set();
+  for (let i = 0; i < raw.list.length; i++) {
+    const name = raw.list[i] && raw.list[i].productName;
+    if (typeof name !== 'string' || !name.trim()) {
+      return { ok: false, msg: `第 ${i + 1} 条缺少 productName 字段` };
+    }
+    if (seen.has(name)) return { ok: false, msg: `存在重复料号: ${name}` };
+    seen.add(name);
+  }
+  return { ok: true, total: raw.list.length };
+}
+
+// 应用内导入微容产品库（写入用户数据目录，读库时优先于安装内置库）
+ipcMain.handle('import-products', async (event) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: '产品库 JSON', extensions: ['json'] }]
+  });
+  if (!result.filePaths || result.filePaths.length === 0) return { canceled: true };
+  const srcPath = result.filePaths[0];
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(srcPath, 'utf8'));
+  } catch (err) {
+    return { error: `文件读取/解析失败: ${err.message}` };
+  }
+  const v = validateProductJson(raw);
+  if (!v.ok) return { error: `校验未通过，已放弃导入：${v.msg}` };
+  try {
+    const destDir = path.join(app.getPath('userData'), 'data');
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.writeFileSync(path.join(destDir, 'viiyong_products_full.json'), JSON.stringify(raw));
+  } catch (err) {
+    return { error: `写入失败: ${err.message}` };
+  }
+  return { ok: true, total: v.total, fileName: path.basename(srcPath) };
+});
+
+// 恢复默认产品库（删除用户数据目录里的导入文件，读库自动回落到内置库）
+ipcMain.handle('reset-products', async () => {
+  const p = path.join(app.getPath('userData'), 'data', 'viiyong_products_full.json');
+  try {
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  } catch (err) {
+    return { error: `删除失败: ${err.message}` };
+  }
+  return { ok: true };
+});
+
+// 当前微容库来源状态（供 UI 显示：导入库 / 内置库 + 条数 + 文件位置）
+ipcMain.handle('get-data-source', async () => {
+  const imported = path.join(app.getPath('userData'), 'data', 'viiyong_products_full.json');
+  if (fs.existsSync(imported)) {
+    try {
+      const d = JSON.parse(fs.readFileSync(imported, 'utf8'));
+      return { source: 'imported', total: (d.list || []).length, path: imported };
+    } catch (e) {
+      return { source: 'imported', total: null, path: imported, error: '导入文件解析失败' };
+    }
+  }
+  const d = loadJsonData('data/viiyong_products_full.json', '产品数据文件不存在');
+  return { source: 'builtin', total: d.list ? d.list.length : null, error: d.error || null };
 });
 
 // 执行匹配

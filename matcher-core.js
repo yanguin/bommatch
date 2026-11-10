@@ -408,8 +408,12 @@ function parseOtherBrandMlcc(name) {
   // 太阳诱电 通用系列：{电压码}MK + 尺寸3位，如 JMK212BC6226MG-T / LMK107B7225KA-TR
   if (/^[AJLTEGUHQS]MK\d/.test(s)) return parseTaiyoGeneral(s);
 
-  // 信昌 PDC：FK/FM/FS/FR/FE/FV/FJ/FP/MT/MG 或 MA 开头
-  if (/^(FK|FM|FS|FR|FE|FV|FJ|FP|MT|MG|MA)/.test(s)) return parsePdc(s);
+  // 华新科 Walsin MT 系列（皇上 2026-11-09 钦定：MT 开头归华新科，
+  // 实样本 MT15B102K500CT = X7R。必须排在信昌 PDC 之前，PDC 前缀列表已剔除 MT）
+  if (s.startsWith('MT')) return parseWalsinMt(s);
+
+  // 信昌 PDC：FK/FM/FS/FR/FE/FV/FJ/FP/MG 或 MA 开头（MT 已剥离归华新科）
+  if (/^(FK|FM|FS|FR|FE|FV|FJ|FP|MG|MA)/.test(s)) return parsePdc(s);
 
   // 京瓷 Kyocera：CM/CT/CU/AR 开头（需在禾伸堂之前判断，因都以 C 开头）
   if (/^(CM|CT|CU|AR)/.test(s)) return parseKyocera(s);
@@ -817,8 +821,8 @@ function parseMurata(s) {
   const size = sizeMap[sizeCode2];
   if (!size) return null;
 
-  // 介质码映射
-  const mediumMap = { '5C': 'C0G', 'R6': 'X5R', 'R7': 'X7R', 'C7': 'X7S' };
+  // 介质码映射（村田官方码表；C8=X6S 见实样本 GRT155C80J475ME13D，皇上 2026-11-09 提供；D7=X7T 与 parseMurataCommon 同表对齐）
+  const mediumMap = { '5C': 'C0G', 'R6': 'X5R', 'R7': 'X7R', 'C7': 'X7S', 'C8': 'X6S', 'D7': 'X7T' };
 
   // 电压码映射：村田全系列共用（见 murataVoltMap）
   const voltMap = murataVoltMap;
@@ -953,7 +957,7 @@ function parseMurataCommon(s, prefix, series) {
   const mediumMap = {
     '5C': 'C0G', '5G': 'X8G',
     'R6': 'X5R', 'R7': 'X7R', 'R9': 'X8R',
-    'C7': 'X7S', 'D7': 'X7T',
+    'C7': 'X7S', 'C8': 'X6S', 'D7': 'X7T',
     'L8': 'X8L', 'M8': 'X8M', 'N8': 'X8N'
   };
 
@@ -1022,6 +1026,42 @@ function parseMurataGcj(s) {
     size,
     temp: mediumMap[mediumCode] || '',
     volt: voltMap[voltCode] !== undefined ? voltMap[voltCode] : null,
+    raw: s
+  };
+}
+
+// 华新科 Walsin MT 系列 MLCC 解析（皇上 2026-11-09 钦定：MT 开头归华新科）
+// 格式：MT + 尺寸(2位) + 介质(1~2字母) + 容量(3~4位,可含R) + 偏差(1字母) + 电压(3位,可含R) + 包装
+// 实样本：MT15B102K500CT → 0402, X7R, 1nF, ±10%, 50V（皇上 2026-11-09 提供，是 X7R 不是 X5R）
+// 介质码与华新科 4 位尺寸系列同家码表（见 parseFenghua 并集表），X 按华新科官方 = X6S；
+// 2 位尺寸码同信昌 PDC 的 JIS 码表。⚠ 前缀 MT 与信昌 PDC 理论重叠，今日按皇上口径全归华新科，
+// 若日后出现信昌 MT 实料（介质码不同）需再分流。
+function parseWalsinMt(s) {
+  const m = s.match(/^MT(\d{2})(CG|[A-Z])([\dR]{3,4})([A-Z])([\dR]{3})[A-Z]*$/);
+  if (!m) return null;
+
+  const cap = eiaCodeToPf(m[3]);
+  if (cap === null) return null;
+
+  // 2 位尺寸码（同 parsePdc 的 JIS 码表）
+  const sizeMap = {
+    '02': '01005', '03': '0201', '15': '0402', '18': '0603',
+    '21': '0805', '31': '1206', '32': '1210', '42': '1808',
+    '43': '1812', '55': '2220'
+  };
+
+  // 华新科介质码（同家口径）：B=X7R/R=X7R、N=C0G、CG=C0G、C=X7S、S=X6S、X=X6S(华新科官方)、F=Y5V
+  const mediumMap = {
+    B: 'X7R', R: 'X7R', N: 'C0G', CG: 'C0G', C: 'X7S', S: 'X6S', X: 'X6S', F: 'Y5V'
+  };
+
+  return {
+    series: null,
+    cap,
+    dev: devLetterToNorm(m[4]),
+    size: sizeMap[m[1]] || '',
+    temp: mediumMap[m[2]] || '',
+    volt: eiaCodeToVolt(m[5]),
     raw: s
   };
 }
@@ -1188,7 +1228,9 @@ function parseKyocera(s) {
 //       MCJCH168BB7104MTPA01 → 0603, X7R, 0.1µF, ±20%, 100V
 //       MCJCG31LAB7225KTPA01 → 1206, X7R, 2.2µF, ±10%, 35V
 function parseTaiyo(s) {
-  const m = s.match(/^M([ACBS])(AS|AR|JC|RL)([ALEJTGUHQS])(\d{2})([0-9A-Z])([A-Z])([A-Z]\d)([\dR]{3})([ACDGJKMBF])([A-Z0-9]*)$/);
+  // 温度特性码 2 位 = [字母][字母或数字]：B7/C6 类字母+数字，以及 CG/CH/CJ/CK 类 C0G 系两字母码
+  // （实样本 MCASU105SCG101JFNA01，皇上 2026-11-09 提供；旧正则 [A-Z]\d 接不住 CG，整型号 return null）
+  const m = s.match(/^M([ACBS])(AS|AR|JC|RL)([ALEJTGUHQS])(\d{2})([0-9A-Z])([A-Z])([A-Z][0-9A-Z])([\dR]{3})([ACDGJKMBF])([A-Z0-9]*)$/);
   if (!m) return null;
   const categoryCode = m[1];     // 用途分类(不参与解析)
   const typeCode = m[2];         // 类型(不参与解析)
@@ -1269,8 +1311,10 @@ function parseTaiyoGeneral(s) {
   };
 
   // 温度特性码（同车规系列）
+  // 太阳诱电官方码表（2008 EIA 编码变更公告）：BJ=X5R / B7=X7R / B6=X6R / C6=X6S / C7=X7S / C5=X5S
+  // 实样本锚点：EMK107BJ105KA-T / TMK107BJ105KA-T 均 X5R（皇上 2026-11-09 提供）
   const mediumMap = {
-    'B5': 'X5R', 'C6': 'X6S', 'B7': 'X7R', 'C7': 'X7S',
+    'BJ': 'X5R', 'C6': 'X6S', 'B7': 'X7R', 'C7': 'X7S',
     'D7': 'X7T', 'CG': 'C0G', 'CH': 'C0H', 'CJ': 'C0J', 'CK': 'C0K'
   };
 
@@ -2148,8 +2192,8 @@ function detectBrand(name) {
   if (/^M[ACBS](AS|AR|JC|RL)/.test(s) || /^[AJLTEGUHQS]MK\d/.test(s)) return 'TAIYO YUDEN(太阳诱电)';
   // 信昌 PDC（MT 除外：与华新科共用）
   if (/^(FK|FM|FS|FR|FE|FV|FJ|FP|MG|MA)/.test(s)) return 'PDC(信昌)';
-  // MT：信昌 PDC 或 华新科 Walsin（歧义，双名）
-  if (/^MT/.test(s)) return 'PDC(信昌) 或 Walsin(华新科)';
+  // 华新科 Walsin MT 系列（皇上 2026-11-09 钦定：MT 开头归华新科，实样本 MT15B102K500CT=X7R）
+  if (/^MT/.test(s)) return 'Walsin(华新科)';
   // 京瓷 Kyocera
   if (/^(CM|CT|CU|AR)/.test(s)) return 'KYOCERA(京瓷)';
   // TDK 东电化（CGA/CNA 车规 / C+公制 通用）

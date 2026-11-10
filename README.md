@@ -46,7 +46,8 @@
   - **ct（村田）**：`GRM32EC72A106KE05L`（GRM）、`GCM155C1H221JA16D`（GCM车规）、`GRT155R71H104KE02D`（GRT车载）、`GCJ188C70J475KE02D`（GCJ高频低阻）、`GJM1555C1H200FB01D`（GJM高频高Q）
   - **ddh（TDK）**：`CGA3E3X7R1H474KT000N`（CGA开头，车规级）、`CNA`系列
   - **三星 SAMSUNG**：`CL05B104KB54PNC`（CL开头）
-  - **信昌 PDC**：`FK/FM/FS/FR/FE/FV/FJ/FP/MT/MG/MA` 开头
+  - **信昌 PDC**：`FK/FM/FS/FR/FE/FV/FJ/FP/MG/MA` 开头
+  - **华新科 Walsin**：`MT15B102K500CT`（MT开头）或 `0603B101K500NT`（4位数字+介质码，与风华同格式）
   - **太阳诱电 Taiyo**：`M + 用途码(A/C/B/S) + 类型码(AS/AR/JC/RL)`，如 `MASR105…`
   - **京瓷 Kyocera**：`CM/CT/CU/AR` 开头
   - **禾伸堂 HolyStone**：`C + 数字尺寸码`，如 `C0603…`

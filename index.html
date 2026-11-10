@@ -988,6 +988,7 @@
           <p>自动匹配 MLCC 型号，支持精确匹配与容差匹配</p>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
+          <el-button size="small" icon="el-icon-refresh" @click="openDataDlg">产品库</el-button>
           <el-select v-model="currentBrand" size="small" style="width: 110px;" @change="switchBrand">
             <el-option label="微容" value="weirong"></el-option>
             <el-option label="强茂" value="qiangmao"></el-option>
@@ -2132,6 +2133,27 @@
         <el-button size="small" @click="saveCopyPreset">存为预设</el-button>
         <el-button size="small" @click="copyDlg.visible = false">取 消</el-button>
         <el-button size="small" type="primary" @click="dlgCopy">复 制</el-button>
+      </div>
+    </el-dialog>
+
+    <el-dialog title="产品库管理" :visible.sync="dataDlg.visible" width="480px" append-to-body>
+      <div v-loading="dataDlg.loading">
+        <template v-if="dataDlg.info">
+          <div style="font-size: 13px; line-height: 1.9;">
+            当前库：<b>{{ dataDlg.info.source === 'imported' ? '应用内导入' : '安装内置' }}</b>（{{ dataDlg.info.total == null ? '?' : dataDlg.info.total }} 条）
+          </div>
+          <div v-if="dataDlg.info.source === 'imported'" style="margin-top: 4px; font-size: 12px; color: #909399; word-break: break-all;">
+            文件位置：{{ dataDlg.info.path }}
+          </div>
+          <div v-if="dataDlg.info.error" style="margin-top: 4px; font-size: 12px; color: #F56C6C;">{{ dataDlg.info.error }}</div>
+        </template>
+        <div style="margin-top: 16px; text-align: right;">
+          <el-button size="small" @click="resetData" :disabled="!dataDlg.info || dataDlg.info.source !== 'imported'">恢复默认库</el-button>
+          <el-button size="small" type="primary" @click="importData">导入新库（JSON）…</el-button>
+        </div>
+        <div style="margin-top: 12px; font-size: 12px; color: #909399;">
+          从官网获取最新产品库 JSON 后在此导入即可生效，无需重新安装；导入前会自动校验文件完整性，不合格文件会被拒收。
+        </div>
       </div>
     </el-dialog>
   </div>
