@@ -638,7 +638,9 @@ new Vue({
         productName: productOpts,
         inputName: buildColFilterOptions(this.filterResult, 'inputName'), // 多型号态才有值；单型号态该列不渲染，空数组无碍
         // 产品特点：按展示用标签（系列标签 + 特点拆分）统计，命中 = 行标签任一入选
-        features: buildColFilterOptions(this.filterResult, 'features', r => this.getFeatureTags(r).map(t => t.label)),
+        // 产品特点：下拉选项 = 整串特点组合（如「A系列 AEC-Q200 弯曲裂纹 软端子 RoHS REACH」），
+        // 非拆散的单标签；勾选 = 整串精确等值匹配（2026-11-11 皇上纠错）
+        features: buildColFilterOptions(this.filterResult, 'features', r => this.featureCombo(r)),
         hitCount: buildColFilterOptions(this.filterResult, 'hitCount', r => (r.hitCount || 0), (a, b) => a - b),
         size: buildColFilterOptions(this.filterResult, 'size'), // 字符串序即英寸码序（01005 < 0201 < 0402 < ...）
         tempCharacteristics: buildColFilterOptions(this.filterResult, 'tempCharacteristics'),
@@ -653,7 +655,7 @@ new Vue({
       return {
         // 暂无匹配占位行 productName 为空，映射到哨兵值参与比较
         productName: r => r.unmatched ? UNMATCHED_FILTER_KEY : r.productName,
-        features: r => this.getFeatureTags(r).map(t => t.label),
+        features: r => this.featureCombo(r),
         hitCount: r => (r.hitCount || 0)
       };
     },
@@ -1926,6 +1928,12 @@ new Vue({
         }
       }
       return tags;
+    },
+
+    // 产品特点整串组合（与表格展示的标签串逐字一致），供「产品特点」列筛选的选项与取值共用；
+    // 无特点（未匹配占位行等）返回空串 → buildColFilterOptions 跳过、筛选比对不命中
+    featureCombo(row) {
+      return this.getFeatureTags(row).map(t => t.label).join(' ');
     },
 
     // ============ 品牌切换 ============
