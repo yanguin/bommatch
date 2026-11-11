@@ -1740,19 +1740,34 @@
             v-if="currentBrand === 'weirong' && activeMode === 'bom' && currentSheet && !currentSheet.skipped"
             :data="filteredResults">
             <el-table-column prop="originalIndex" label="#" width="50" align="center"></el-table-column>
-            <el-table-column prop="desc" label="物料描述" min-width="200">
+            <el-table-column prop="desc" min-width="200">
+              <template slot="header">
+                <col-filter-head field="desc" label="物料描述"
+                  :options="bomColFilterOptions.desc" :active="bomColFilterActive.desc"
+                  @apply="onBomColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 {{ scope.row.desc }}
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="匹配状态" width="110" align="center">
+            <el-table-column prop="status" width="110" align="center">
+              <template slot="header">
+                <col-filter-head field="status" label="匹配状态"
+                  :options="bomColFilterOptions.status" :active="bomColFilterActive.status"
+                  @apply="onBomColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <el-tag :type="getStatusType(scope.row.status)" size="mini" class="status-tag">
                   {{ scope.row.status }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="matchCount" label="匹配数量" width="90" align="center">
+            <el-table-column prop="matchCount" width="90" align="center">
+              <template slot="header">
+                <col-filter-head field="matchCount" label="匹配数量"
+                  :options="bomColFilterOptions.matchCount" :active="bomColFilterActive.matchCount"
+                  @apply="onBomColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span :style="{color: scope.row.matchCount > 0 ? 'var(--color-success)' : 'var(--color-text-tertiary)', fontWeight: '600'}">
                   {{ scope.row.matchCount }}
@@ -1762,9 +1777,13 @@
             <el-table-column
               v-for="letter in currentSheet.displayLetters"
               :key="letter"
-              :label="getSeriesLabel(letter)"
               :prop="'letter_' + letter"
               min-width="150">
+              <template slot="header">
+                <col-filter-head :field="'letter_' + letter" :label="getSeriesLabel(letter)"
+                  :options="bomColFilterOptions['letter_' + letter]" :active="bomColFilterActive['letter_' + letter]"
+                  @apply="onBomColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <div class="match-names">{{ scope.row['letter_' + letter] || '-' }}</div>
               </template>
@@ -1846,7 +1865,12 @@
             </el-table-column>
             <!-- 多型号态：该输入在当前视图命中的产品数（未匹配为 0） -->
             <el-table-column v-if="filterInputMode === 'multi'" prop="hitCount"
-              label="命中产品数" width="90" align="center">
+              width="90" align="center">
+              <template slot="header">
+                <col-filter-head field="hitCount" label="命中产品数"
+                  :options="colFilterOptions.hitCount" :active="colFilterActive.hitCount"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span :style="scope.row.hitCount > 1 ? 'font-weight: 600; color: var(--color-accent);' : ''">{{ scope.row.hitCount }}</span>
               </template>
@@ -1862,7 +1886,12 @@
                 <span v-else style="font-weight: 600; color: var(--color-accent);">{{ scope.row.productName }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="features" label="产品特点" min-width="260">
+            <el-table-column prop="features" min-width="260">
+              <template slot="header">
+                <col-filter-head field="features" label="产品特点"
+                  :options="colFilterOptions.features" :active="colFilterActive.features"
+                  @apply="onColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="!scope.row.series && !scope.row.features" style="color: var(--color-text-tertiary);">-</span>
                 <div v-else style="display: flex; flex-wrap: wrap; gap: 4px;">
@@ -1941,22 +1970,93 @@
             v-if="currentBrand === 'qiangmao' && qmFilterResult"
             :data="filteredQmFilterResult">
             <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
-            <el-table-column prop="partNumber" label="产品型号" min-width="180">
+            <el-table-column prop="partNumber" min-width="180">
+              <template slot="header">
+                <col-filter-head field="partNumber" label="产品型号"
+                  :options="qmColFilterOptions.partNumber" :active="qmColFilterActive.partNumber"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span style="font-weight: 600; color: var(--color-accent);">{{ scope.row.partNumber }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="package" label="封装" min-width="140"></el-table-column>
-            <el-table-column prop="polarity" label="极性" width="70" align="center"></el-table-column>
-            <el-table-column prop="config" label="配置" width="80" align="center"></el-table-column>
-            <el-table-column prop="vds" label="VDS(V)" width="80" align="center"></el-table-column>
-            <el-table-column prop="vgs" label="VGS(±V)" width="85" align="center"></el-table-column>
-            <el-table-column prop="id" label="ID(A)" width="70" align="center"></el-table-column>
-            <el-table-column prop="rdsOn_10V" label="RDS(on)@10V(mΩ)" width="140" align="center"></el-table-column>
-            <el-table-column prop="rdsOn_4_5V" label="RDS(on)@4.5V(mΩ)" width="140" align="center"></el-table-column>
-            <el-table-column prop="ciss" label="Ciss(pF)" width="90" align="center"></el-table-column>
-            <el-table-column prop="vgsTh" label="VGS(th)(V)" width="100" align="center"></el-table-column>
-            <el-table-column prop="qg_10V" label="Qg@10V(nC)" width="100" align="center"></el-table-column>
+            <el-table-column prop="package" min-width="140">
+              <template slot="header">
+                <col-filter-head field="package" label="封装"
+                  :options="qmColFilterOptions.package" :active="qmColFilterActive.package"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="polarity" width="70" align="center">
+              <template slot="header">
+                <col-filter-head field="polarity" label="极性"
+                  :options="qmColFilterOptions.polarity" :active="qmColFilterActive.polarity"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="config" width="80" align="center">
+              <template slot="header">
+                <col-filter-head field="config" label="配置"
+                  :options="qmColFilterOptions.config" :active="qmColFilterActive.config"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="vds" width="80" align="center">
+              <template slot="header">
+                <col-filter-head field="vds" label="VDS(V)"
+                  :options="qmColFilterOptions.vds" :active="qmColFilterActive.vds"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="vgs" width="85" align="center">
+              <template slot="header">
+                <col-filter-head field="vgs" label="VGS(±V)"
+                  :options="qmColFilterOptions.vgs" :active="qmColFilterActive.vgs"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="id" width="70" align="center">
+              <template slot="header">
+                <col-filter-head field="id" label="ID(A)"
+                  :options="qmColFilterOptions.id" :active="qmColFilterActive.id"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="rdsOn_10V" width="140" align="center">
+              <template slot="header">
+                <col-filter-head field="rdsOn_10V" label="RDS(on)@10V(mΩ)"
+                  :options="qmColFilterOptions.rdsOn_10V" :active="qmColFilterActive.rdsOn_10V"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="rdsOn_4_5V" width="140" align="center">
+              <template slot="header">
+                <col-filter-head field="rdsOn_4_5V" label="RDS(on)@4.5V(mΩ)"
+                  :options="qmColFilterOptions.rdsOn_4_5V" :active="qmColFilterActive.rdsOn_4_5V"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="ciss" width="90" align="center">
+              <template slot="header">
+                <col-filter-head field="ciss" label="Ciss(pF)"
+                  :options="qmColFilterOptions.ciss" :active="qmColFilterActive.ciss"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="vgsTh" width="100" align="center">
+              <template slot="header">
+                <col-filter-head field="vgsTh" label="VGS(th)(V)"
+                  :options="qmColFilterOptions.vgsTh" :active="qmColFilterActive.vgsTh"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="qg_10V" width="100" align="center">
+              <template slot="header">
+                <col-filter-head field="qg_10V" label="Qg@10V(nC)"
+                  :options="qmColFilterOptions.qg_10V" :active="qmColFilterActive.qg_10V"
+                  @apply="onQmColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
             <!-- 规格书列 -->
             <el-table-column label="规格书" width="80" align="center">
               <template slot-scope="scope">
@@ -1982,43 +2082,84 @@
             v-if="currentBrand === 'dayi' && dyResult"
             :data="filteredDyResult">
             <el-table-column prop="rowNo" label="序号" width="60" align="center"></el-table-column>
-            <el-table-column prop="input" label="输入型号" min-width="170">
+            <el-table-column prop="input" min-width="170">
+              <template slot="header">
+                <col-filter-head field="input" label="输入型号"
+                  :options="dyColFilterOptions.input" :active="dyColFilterActive.input"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span style="font-weight: 600; color: var(--color-text-secondary);">{{ scope.row.input }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="brandLabel" label="厂家" width="80" align="center"></el-table-column>
-            <el-table-column prop="dayiModel" label="大毅型号" min-width="150" align="center">
+            <el-table-column prop="brandLabel" width="80" align="center">
+              <template slot="header">
+                <col-filter-head field="brandLabel" label="厂家"
+                  :options="dyColFilterOptions.brandLabel" :active="dyColFilterActive.brandLabel"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
+            </el-table-column>
+            <el-table-column prop="dayiModel" min-width="150" align="center">
+              <template slot="header">
+                <col-filter-head field="dayiModel" label="大毅型号"
+                  :options="dyColFilterOptions.dayiModel" :active="dyColFilterActive.dayiModel"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.dayiModel" style="font-weight: 600; color: var(--color-accent);">{{ scope.row.dayiModel }}</span>
                 <el-tag v-else type="danger" size="mini">未识别</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="dayiSeries" label="大毅系列" width="90" align="center">
+            <el-table-column prop="dayiSeries" width="90" align="center">
+              <template slot="header">
+                <col-filter-head field="dayiSeries" label="大毅系列"
+                  :options="dyColFilterOptions.dayiSeries" :active="dyColFilterActive.dayiSeries"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.dayiSeries">{{ scope.row.dayiSeries }}</span>
                 <span v-else style="color: var(--color-text-tertiary);">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="size" label="封装" width="80" align="center">
+            <el-table-column prop="size" width="80" align="center">
+              <template slot="header">
+                <col-filter-head field="size" label="封装"
+                  :options="dyColFilterOptions.size" :active="dyColFilterActive.size"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.size">{{ scope.row.size }}</span>
                 <span v-else style="color: var(--color-text-tertiary);">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="tol" label="精度" width="80" align="center">
+            <el-table-column prop="tol" width="80" align="center">
+              <template slot="header">
+                <col-filter-head field="tol" label="精度"
+                  :options="dyColFilterOptions.tol" :active="dyColFilterActive.tol"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.tol">{{ scope.row.tol }}</span>
                 <span v-else style="color: var(--color-text-tertiary);">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="resistanceFormatted" label="阻值" width="100" align="center">
+            <el-table-column prop="resistanceFormatted" width="100" align="center">
+              <template slot="header">
+                <col-filter-head field="resistanceFormatted" label="阻值"
+                  :options="dyColFilterOptions.resistanceFormatted" :active="dyColFilterActive.resistanceFormatted"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.resistanceFormatted">{{ scope.row.resistanceFormatted }}</span>
                 <span v-else style="color: var(--color-text-tertiary);">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="dayiResCode" label="阻值码" width="90" align="center">
+            <el-table-column prop="dayiResCode" width="90" align="center">
+              <template slot="header">
+                <col-filter-head field="dayiResCode" label="阻值码"
+                  :options="dyColFilterOptions.dayiResCode" :active="dyColFilterActive.dayiResCode"
+                  @apply="onDyColFilterApply"></col-filter-head>
+              </template>
               <template slot-scope="scope">
                 <span v-if="scope.row.dayiResCode">{{ scope.row.dayiResCode }}</span>
                 <span v-else style="color: var(--color-text-tertiary);">-</span>

@@ -40,6 +40,51 @@ function deviationToNum(text) {
   const n = parseFloat(String(text).replace('±', ''));
   return isNaN(n) ? null : n;
 }
+// parseFloat 的 null 安全版（"±40V"→40、"abc"→null），供 makeNumericSort 使用
+function parseNum(text) {
+  const n = parseFloat(text);
+  return isNaN(n) ? null : n;
+}
+
+// ============ 表头列筛选通用工具（四张结果表共用） ============
+// 选项构建：按 getter（默认 row[field]）取值去重计数，显示「值（N）」；
+// getter 返回数组 = 单元格内多值（如产品特点标签、系列列多型号），逐项统计
+function buildColFilterOptions(rows, field, getter, sortFn) {
+  const get = getter || (r => r[field]);
+  const countMap = new Map();
+  for (const r of rows) {
+    const v = get(r);
+    const list = Array.isArray(v) ? v : [v];
+    for (const item of list) {
+      if (item === undefined || item === null || item === '') continue;
+      countMap.set(item, (countMap.get(item) || 0) + 1);
+    }
+  }
+  const arr = [...countMap.keys()];
+  arr.sort(sortFn || ((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+  return arr.map(v => ({ text: `${v}（${countMap.get(v)}）`, value: v, name: String(v), count: countMap.get(v) }));
+}
+// 行过滤：active 为 {field: 勾选值数组}；getters[field] 可配取值器（返回数组 = 任一命中即保留该行）
+function applyColFilters(results, active, getters) {
+  let out = results;
+  for (const field of Object.keys(active)) {
+    const vals = active[field];
+    if (!vals || vals.length === 0) continue;
+    const get = (getters && getters[field]) || (r => r[field]);
+    out = out.filter(item => {
+      const v = get(item);
+      if (Array.isArray(v)) return v.some(x => vals.includes(x));
+      return vals.includes(v);
+    });
+  }
+  return out;
+}
+// 空白筛选状态 map（键须先声明，Vue2 才能响应式赋值）
+const emptyColFilterActive = fields => fields.reduce((m, f) => (m[f] = [], m), {});
+// 强茂结果表参与表头筛选的列
+const QM_FILTER_FIELDS = ['partNumber', 'package', 'polarity', 'config', 'vds', 'vgs', 'id', 'rdsOn_10V', 'rdsOn_4_5V', 'ciss', 'vgsTh', 'qg_10V'];
+// 大毅结果表参与表头筛选的列
+const DY_FILTER_FIELDS = ['input', 'brandLabel', 'dayiModel', 'dayiSeries', 'size', 'tol', 'resistanceFormatted', 'dayiResCode'];
 
 // ============ 自定义表头列筛选面板 ============
 // Element UI 内置筛选面板（el-table-filter-panel）不支持自定义内容，加不了搜索框；
@@ -403,7 +448,13 @@ new Vue({
       filterResult: null,
       filterSearchText: '',
       // 表头列筛选勾选值（key=列 column-key，值=勾选项数组；与搜索框叠加 AND 过滤）
-      colFilterActive: { productName: [], inputName: [], size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] },
+      colFilterActive: { productName: [], inputName: [], features: [], hitCount: [], size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] },
+      // BOM 匹配结果表头列筛选（键含动态系列列 letter_X，随 sheet 重建）
+      bomColFilterActive: {},
+      // 强茂结果表头列筛选
+      qmColFilterActive: emptyColFilterActive(QM_FILTER_FIELDS),
+      // 大毅结果表头列筛选
+      dyColFilterActive: emptyColFilterActive(DY_FILTER_FIELDS),
       // 型号筛选结果表格勾选的行（用于规格书批量下载/浏览器打开）
       specSelectedRows: [],
 
@@ -553,36 +604,57 @@ new Vue({
         }
       }
 
+      // 表头列筛选（与状态/搜索叠加，AND）
+      results = applyColFilters(results, this.bomColFilterActive);
+
       return results;
+    },
+
+    // BOM 匹配表头列筛选选项：基于当前 sheet 原始行（列筛选前的基准），系列列按单元格内逐型号拆分统计
+    bomColFilterOptions() {
+      const rows = (this.currentSheet && this.currentSheet.data && this.currentSheet.data.tableData) || [];
+      if (rows.length === 0) return {};
+      const opts = {
+        desc: buildColFilterOptions(rows, 'desc'),
+        status: buildColFilterOptions(rows, 'status'),
+        matchCount: buildColFilterOptions(rows, 'matchCount', null, (a, b) => a - b)
+      };
+      for (const letter of (this.currentSheet.displayLetters || [])) {
+        const field = 'letter_' + letter;
+        opts[field] = buildColFilterOptions(rows, field, r => (r[field] ? String(r[field]).split('\n') : []));
+      }
+      return opts;
     },
 
     // 表头筛选选项：按当前查询结果动态去重生成（非硬编码），容量/偏差/电压按数值序
     colFilterOptions() {
-      const empty = { productName: [], inputName: [], size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] };
+      const empty = { productName: [], inputName: [], features: [], hitCount: [], size: [], tempCharacteristics: [], capacity: [], capacityDeviation: [], voltage: [] };
       if (!this.filterResult) return empty;
-      const pick = (field, sortFn) => {
-        // 值 → 行数计数，下拉选项显示「值（N）」，value 保持原值不影响过滤
-        const countMap = new Map();
-        for (const r of this.filterResult) {
-          const v = r[field];
-          if (v !== undefined && v !== null && v !== '') countMap.set(v, (countMap.get(v) || 0) + 1);
-        }
-        const arr = [...countMap.keys()];
-        arr.sort(sortFn || ((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
-        return arr.map(v => ({ text: `${v}（${countMap.get(v)}）`, value: v, name: String(v), count: countMap.get(v) }));
-      };
-      const productOpts = pick('productName'); // 字符串序
-      // 暂无匹配占位行 productName 为空串，pick 取不到；补哨兵选项，让表头能筛出暂无匹配行
+      const productOpts = buildColFilterOptions(this.filterResult, 'productName'); // 字符串序
+      // 暂无匹配占位行 productName 为空串，build 取不到；补哨兵选项，让表头能筛出暂无匹配行
       const unmatchedCount = this.filterResult.filter(r => r.unmatched).length;
       if (unmatchedCount > 0) productOpts.push({ text: `暂无匹配（${unmatchedCount}）`, value: UNMATCHED_FILTER_KEY, name: '暂无匹配', count: unmatchedCount });
       return {
         productName: productOpts,
-        inputName: pick('inputName'),     // 多型号态才有值；单型号态该列不渲染，空数组无碍
-        size: pick('size'), // 字符串序即英寸码序（01005 < 0201 < 0402 < ...）
-        tempCharacteristics: pick('tempCharacteristics'),
-        capacity: pick('capacity', makeNumericSort(capacityToPf)),
-        capacityDeviation: pick('capacityDeviation', makeNumericSort(deviationToNum)),
-        voltage: pick('voltage', makeNumericSort(t => parseFloat(t)))
+        inputName: buildColFilterOptions(this.filterResult, 'inputName'), // 多型号态才有值；单型号态该列不渲染，空数组无碍
+        // 产品特点：按展示用标签（系列标签 + 特点拆分）统计，命中 = 行标签任一入选
+        features: buildColFilterOptions(this.filterResult, 'features', r => this.getFeatureTags(r).map(t => t.label)),
+        hitCount: buildColFilterOptions(this.filterResult, 'hitCount', r => (r.hitCount || 0), (a, b) => a - b),
+        size: buildColFilterOptions(this.filterResult, 'size'), // 字符串序即英寸码序（01005 < 0201 < 0402 < ...）
+        tempCharacteristics: buildColFilterOptions(this.filterResult, 'tempCharacteristics'),
+        capacity: buildColFilterOptions(this.filterResult, 'capacity', null, makeNumericSort(capacityToPf)),
+        capacityDeviation: buildColFilterOptions(this.filterResult, 'capacityDeviation', null, makeNumericSort(deviationToNum)),
+        voltage: buildColFilterOptions(this.filterResult, 'voltage', null, makeNumericSort(parseNum))
+      };
+    },
+
+    // 微容筛选表列筛选取值器（与 colFilterOptions 的 getter 语义严格对称）
+    colFilterGetters() {
+      return {
+        // 暂无匹配占位行 productName 为空，映射到哨兵值参与比较
+        productName: r => r.unmatched ? UNMATCHED_FILTER_KEY : r.productName,
+        features: r => this.getFeatureTags(r).map(t => t.label),
+        hitCount: r => (r.hitCount || 0)
       };
     },
 
@@ -591,19 +663,8 @@ new Vue({
     // 勾选变化不影响已查询出的结果，仅右侧搜索框 + 表头列筛选过滤
     filteredFilterResult() {
       if (!this.filterResult) return [];
-      let results = this.filterResult;
-
       // 表头列筛选（与搜索框叠加，AND）
-      for (const field of Object.keys(this.colFilterActive)) {
-        const vals = this.colFilterActive[field];
-        if (vals && vals.length > 0) {
-          results = results.filter(item => {
-            // 暂无匹配占位行 productName 为空，映射到哨兵值参与比较
-            const v = (field === 'productName' && item.unmatched) ? UNMATCHED_FILTER_KEY : item[field];
-            return vals.includes(v);
-          });
-        }
-      }
+      let results = applyColFilters(this.filterResult, this.colFilterActive, this.colFilterGetters);
 
       if (!this.filterSearchText) return results;
 
@@ -631,13 +692,27 @@ new Vue({
       return set.size;
     },
 
+    // 强茂表头列筛选选项（数值列按数值序，其余字符串序）
+    qmColFilterOptions() {
+      if (!this.qmFilterResult) return {};
+      const numSort = makeNumericSort(parseNum);
+      const opts = {};
+      for (const f of QM_FILTER_FIELDS) {
+        opts[f] = buildColFilterOptions(this.qmFilterResult, f, null,
+          ['partNumber', 'package', 'polarity', 'config'].includes(f) ? undefined : numSort);
+      }
+      return opts;
+    },
+
     // 强茂筛选结果过滤
     filteredQmFilterResult() {
       if (!this.qmFilterResult) return [];
-      if (!this.qmSearchText) return this.qmFilterResult;
+      // 表头列筛选（与搜索框叠加，AND）
+      let results = applyColFilters(this.qmFilterResult, this.qmColFilterActive);
+      if (!this.qmSearchText) return results;
 
       const keyword = this.qmSearchText.toLowerCase();
-      return this.qmFilterResult.filter(item =>
+      return results.filter(item =>
         (item.partNumber || '').toLowerCase().includes(keyword)
       );
     },
@@ -649,10 +724,21 @@ new Vue({
       return { total: this.dyResult.length, ok, fail: this.dyResult.length - ok };
     },
 
-    // 大毅换算结果过滤（关键字 + 状态）
+    // 大毅表头列筛选选项
+    dyColFilterOptions() {
+      if (!this.dyResult) return {};
+      const opts = {};
+      for (const f of DY_FILTER_FIELDS) {
+        opts[f] = buildColFilterOptions(this.dyResult, f);
+      }
+      return opts;
+    },
+
+    // 大毅换算结果过滤（表头列筛选 + 状态 + 关键字）
     filteredDyResult() {
       if (!this.dyResult) return [];
-      let rows = this.dyResult;
+      // 表头列筛选（与状态/搜索叠加，AND）
+      let rows = applyColFilters(this.dyResult, this.dyColFilterActive);
 
       if (this.dyStatusFilter === 'ok') {
         rows = rows.filter(r => !!r.dayiModel);
@@ -924,6 +1010,8 @@ new Vue({
 
       this.matchData = { sheets, totalSheets: result.totalSheets, validSheets: result.validSheets };
       this.currentSheetIndex = 0;
+      // 列筛选随新匹配重建（键集对齐首 sheet，顺带清空旧勾选）
+      this.bomColFilterActive = this.makeBomColFilterActive(sheets[0] ? (sheets[0].displayLetters || []) : []);
 
       this.$nextTick(() => {
         this.calcTableHeight();
@@ -934,10 +1022,12 @@ new Vue({
     switchSheet(idx) {
       if (idx === this.currentSheetIndex) return;
       this.currentSheetIndex = idx;
-      // 切换时清空搜索筛选
+      // 切换时清空搜索筛选（列筛选键集随 sheet 重建）
       this.searchText = '';
       this.searchColumn = '';
       this.filterStatus = '';
+      const sheet = this.matchData.sheets && this.matchData.sheets[idx];
+      this.bomColFilterActive = this.makeBomColFilterActive(sheet ? (sheet.displayLetters || []) : []);
       this.$nextTick(() => {
         this.calcTableHeight();
       });
@@ -1549,6 +1639,22 @@ new Vue({
     onColFilterApply(field, vals) {
       this.colFilterActive[field] = vals;
     },
+    // BOM / 强茂 / 大毅结果表的列筛选回传（键已在 map 中声明，直接赋值保持响应式）
+    onBomColFilterApply(field, vals) {
+      this.bomColFilterActive[field] = vals;
+    },
+    onQmColFilterApply(field, vals) {
+      this.qmColFilterActive[field] = vals;
+    },
+    onDyColFilterApply(field, vals) {
+      this.dyColFilterActive[field] = vals;
+    },
+    // BOM 列筛选空白 map：含当前 sheet 的动态系列列键（Vue2 需先声明键才响应式）
+    makeBomColFilterActive(letters) {
+      const m = { desc: [], status: [], matchCount: [] };
+      for (const l of letters) m['letter_' + l] = [];
+      return m;
+    },
 
     // 重置表头列筛选：清勾选值（各面板打开时会从 active 重新同步草稿，无需额外清面板 UI）
     resetColFilters() {
@@ -1913,6 +2019,7 @@ new Vue({
 
         // rowNo 为结果集内原始行号（不随搜索重编号）；展开拷贝避免污染产品库对象
         this.qmFilterResult = results.map((item, idx) => ({ ...item, rowNo: idx + 1 }));
+        this.qmColFilterActive = emptyColFilterActive(QM_FILTER_FIELDS); // 新查询重置列筛选
         if (this.qmInputMode === 'multi') {
           this.qmMultiStats = {
             totalInputs: names.length,
@@ -2030,6 +2137,7 @@ new Vue({
       try {
         const rows = lines.map((line, idx) => ({ ...this.convertOneResistor(line), rowNo: idx + 1 }));
         this.dyResult = rows;
+        this.dyColFilterActive = emptyColFilterActive(DY_FILTER_FIELDS); // 新查询重置列筛选
 
         const ok = rows.filter(r => r.dayiModel).length;
         const fail = rows.length - ok;
