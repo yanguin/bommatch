@@ -1222,7 +1222,7 @@
                 <div style="margin-top: 6px;">
                   <el-checkbox v-model="filterMultiExactOnly">仅本型号（只精确匹配输入型号本身，不做规格/模糊匹配）</el-checkbox>
                 </div>
-                <div v-if="filterMultiSeries.length === 0" style="margin-top: 8px; color: var(--color-error); font-size: 12px;">
+                <div v-if="filterMultiSeries.length === 0 && !filterMultiExactOnly" style="margin-top: 8px; color: var(--color-error); font-size: 12px;">
                   未选择任何系列，将匹配全部产品
                 </div>
               </div>

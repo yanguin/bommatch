@@ -470,6 +470,17 @@ new Vue({
     };
   },
 
+  // 多型号态勾选互斥（皇上钦定 2026-11-11）：「仅本型号」与匹配系列互斥
+  //   勾「仅本型号」→ 系列全清；勾任一系列 → 「仅本型号」自动取消；系列之间仍可多选
+  watch: {
+    filterMultiExactOnly(v) {
+      if (v) this.filterMultiSeries = [];
+    },
+    filterMultiSeries(v) {
+      if (v && v.length > 0) this.filterMultiExactOnly = false;
+    }
+  },
+
   computed: {
     // 「复制详细信息」当前生效的预设（菜单上动态显示其名字）
     copyLastPreset() {
