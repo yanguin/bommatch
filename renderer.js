@@ -113,11 +113,28 @@ Vue.component('col-filter-head', {
     return { search: '', draft: [], visible: false };
   },
   computed: {
-    // 搜索实时过滤选项（按选项名匹配，大小写不敏感）
+    // 搜索实时过滤：空格分隔多关键字，需全部命中（AND）。
+    // 字母/数字关键字须命中在"边界"上（名称开头或字母↔数字交界），如 T 只认 T475K 的系列位 T，
+    // 不认 V475M...NKT 结尾夹带的 T；中文等非字母数字关键字退回普通包含匹配（2026-11-11 皇上钦定示例）
     shown() {
       const kw = this.search.trim().toLowerCase();
       if (!kw) return this.options;
-      return this.options.filter(o => o.name.toLowerCase().includes(kw));
+      const kws = kw.split(/\s+/);
+      const cls = ch => (ch >= '0' && ch <= '9') ? 1 : ((ch >= 'a' && ch <= 'z') ? 2 : 0);
+      const hit = (nameLc, k) => {
+        const alnumK = cls(k[0]) !== 0;
+        let i = nameLc.indexOf(k);
+        while (i !== -1) {
+          if (!alnumK) return true; // 非字母数字关键字：普通包含
+          if (i === 0 || cls(nameLc[i - 1]) !== cls(nameLc[i])) return true; // 边界命中
+          i = nameLc.indexOf(k, i + 1);
+        }
+        return false;
+      };
+      return this.options.filter(o => {
+        const nameLc = o.name.toLowerCase();
+        return kws.every(k => hit(nameLc, k));
+      });
     },
     // 全选三态（作用于当前搜索过滤后的选项：搜索时只全选可见项）；set = 勾/取消全选
     allSelected: {
@@ -169,7 +186,7 @@ Vue.component('col-filter-head', {
       <el-popover placement="bottom" trigger="click" width="230"
         popper-class="col-filter-popper" v-model="visible" @show="onShow">
         <div class="col-filter-panel">
-          <el-input v-model="search" size="mini" placeholder="输入内容实时筛选"
+          <el-input v-model="search" size="mini" placeholder="搜同时包含全部关键字，空格分隔"
             clearable prefix-icon="el-icon-search"></el-input>
           <div class="col-filter-topbar">
             <el-checkbox v-model="allSelected" :indeterminate="someSelected && !allSelected">全选</el-checkbox>
