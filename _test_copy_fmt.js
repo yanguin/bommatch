@@ -24,6 +24,11 @@ eval(m[0].replace('const COPY_BUILT_IN_PRESETS', 'var COPY_BUILT_IN_PRESETS') + 
 
 const ctx = Object.assign({}, methods, { copyCustomPresets: [] });
 
+// spec 字段依赖 specFullUrl（renderer.js 里的域名补全方法），从源码原样抽出保证同源
+const sm = src.match(/specFullUrl\(url\) \{[\s\S]*?\},/);
+if (!sm) { console.error('FAIL: 未找到 specFullUrl 方法'); process.exit(1); }
+eval('ctx.specFullUrl = function ' + sm[0].replace(/,$/, ''));
+
 // mock 行：与设计示例对齐的真实字段形态
 const row = {
   productName: 'T225K0402X5R100NCT',
@@ -81,6 +86,36 @@ for (const c of edgeCases) {
   const out = ctx.fillCopyTemplate(p, c.row);
   if (out === c.expect) { pass++; console.log(`PASS  [边界] ${c.name}: ${out}`); }
   else { fail++; console.log(`FAIL  [边界] ${c.name}\n  期望: ${c.expect}\n  实际: ${out}`); }
+}
+
+// ---- 规格书链接字段（spec 胶囊）----
+const SPEC_REL = '/UploadFiles/2024/T225K0402X5R100NCT.pdf';
+const specPresets = [
+  { id: 't1', name: '型号+规格书', sep: '/', tokens: ['model', 'spec'] },
+  { id: 't2', name: '仅规格书(逗号分隔,多份)', sep: ',', tokens: ['spec'] }
+];
+const specCases = [
+  { name: '单份规格书（相对路径补域名）',
+    cfg: specPresets[0],
+    row: { productName: 'T225K0402X5R100NCT', specs: [{ FileUrl: SPEC_REL }] },
+    expect: 'T225K0402X5R100NCT/https://www.viiyong.com' + SPEC_REL },
+  { name: '多份规格书按分隔符连接',
+    cfg: specPresets[1],
+    row: { specs: [{ FileUrl: SPEC_REL }, { FileUrl: 'https://cdn.example.com/other.pdf' }] },
+    expect: 'https://www.viiyong.com' + SPEC_REL + ',https://cdn.example.com/other.pdf' },
+  { name: '无规格书：字段整段省略',
+    cfg: specPresets[0],
+    row: { productName: 'T225K0402X5R100NCT', specs: [] },
+    expect: 'T225K0402X5R100NCT' },
+  { name: 'specs 缺失：字段整段省略',
+    cfg: specPresets[1],
+    row: { productName: 'X' },
+    expect: '' }
+];
+for (const c of specCases) {
+  const out = ctx.fillCopyTemplate(c.cfg, c.row);
+  if (out === c.expect) { pass++; console.log(`PASS  [规格书] ${c.name}`); }
+  else { fail++; console.log(`FAIL  [规格书] ${c.name}\n  期望: ${c.expect}\n  实际: ${out}`); }
 }
 
 console.log(`\n共 ${pass + fail} 条：PASS ${pass} / FAIL ${fail}`);

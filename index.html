@@ -2098,7 +2098,8 @@
           <el-button v-for="f in [
             { id: 'ccap', label: '类别码' }, { id: 'cap', label: '容值' }, { id: 'tol', label: '精度' },
             { id: 'volt', label: '电压' }, { id: 'temp', label: '介质' }, { id: 'size', label: '封装' },
-            { id: 'model', label: '产品型号' }, { id: 'input', label: '输入型号' }]"
+            { id: 'model', label: '产品型号' }, { id: 'input', label: '输入型号' },
+            { id: 'spec', label: '规格书链接' }]"
             :key="f.id" size="mini" @click="copyDlgAdd(f.id)">＋{{ f.label }}</el-button>
           <el-button size="mini" type="warning" plain @click="copyDlgAdd('ARROW')">＋==》</el-button>
         </div>

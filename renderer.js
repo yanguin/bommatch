@@ -311,7 +311,8 @@ const COPY_FIELD_DEFS = [
   { id: 'tol',   label: '精度' },
   { id: 'volt',  label: '电压' },
   { id: 'temp',  label: '介质' },
-  { id: 'size',  label: '封装' }
+  { id: 'size',  label: '封装' },
+  { id: 'spec',  label: '规格书链接' }
 ];
 
 // 内置预设（example 供菜单悬停提示；ERP 系列预设自带大写容值 + SMD 封装前缀风格）
@@ -1104,6 +1105,13 @@ new Vue({
         case 'size': {
           const v = String(row.size || '').split('/')[0];
           return (cfg && cfg.sizeSmd && v) ? 'SMD' + v : v;
+        }
+        case 'spec': {
+          // 规格书链接：域名补全后按分隔符连接（多份规格书一行内全给）；无规格书返回空（自动省略）
+          return (row.specs || [])
+            .map(s => s && s.FileUrl ? this.specFullUrl(s.FileUrl) : '')
+            .filter(Boolean)
+            .join(cfg.sep);
         }
         default: return '';
       }
