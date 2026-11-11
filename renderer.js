@@ -99,7 +99,7 @@ Vue.component('col-filter-head', {
             <el-button size="mini" @click="reset">重置</el-button>
           </div>
         </div>
-        <i slot="reference" class="el-icon-filter col-filter-icon"
+        <i slot="reference" class="el-icon-s-operation col-filter-icon"
           :class="{ active: active.length > 0 }" title="筛选"></i>
       </el-popover>
     </span>
