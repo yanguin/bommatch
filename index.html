@@ -430,6 +430,33 @@
     .col-filter-icon.active {
       color: var(--color-accent);
     }
+    .col-filter-panel .col-filter-topbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 0 2px;
+    }
+    .col-filter-panel .col-filter-topbar .el-checkbox {
+      margin-right: 0;
+    }
+    .col-filter-panel .col-filter-topbar .el-checkbox__label {
+      font-size: 12px;
+    }
+    .col-filter-panel .col-filter-total {
+      flex: 1;
+      color: var(--color-text-tertiary);
+      font-size: 12px;
+    }
+    .col-filter-panel .col-filter-invert {
+      color: var(--color-accent);
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .col-filter-panel .col-filter-invert:hover {
+      opacity: 0.8;
+    }
     .col-filter-panel .col-filter-list {
       max-height: 240px;
       overflow-y: auto;

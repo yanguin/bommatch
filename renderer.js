@@ -106,6 +106,24 @@ Vue.component('col-filter-head', {
       const kw = this.search.trim().toLowerCase();
       if (!kw) return this.options;
       return this.options.filter(o => o.name.toLowerCase().includes(kw));
+    },
+    // 全选三态（作用于当前搜索过滤后的选项：搜索时只全选可见项）；set = 勾/取消全选
+    allSelected: {
+      get() {
+        return this.shown.length > 0 && this.shown.every(o => this.draft.includes(o.value));
+      },
+      set(v) {
+        const sv = this.shown.map(o => o.value);
+        if (v) this.draft = [...new Set([...this.draft, ...sv])];
+        else this.draft = this.draft.filter(x => !sv.includes(x));
+      }
+    },
+    someSelected() {
+      return this.shown.some(o => this.draft.includes(o.value));
+    },
+    // 顶部统计：项 = 去重选项数，条 = 含重复的取值总数（各选项 count 之和）
+    shownTotal() {
+      return this.shown.reduce((s, o) => s + (o.count || 0), 0);
     }
   },
   methods: {
@@ -113,6 +131,16 @@ Vue.component('col-filter-head', {
     onShow() {
       this.draft = [...this.active];
       this.search = '';
+    },
+    // 反选：仅对当前搜索可见的选项取反（勾↔不勾），搜索外的已勾项原样保留
+    invertSelection() {
+      const sv = this.shown.map(o => o.value);
+      const on = new Set(this.draft);
+      for (const v of sv) {
+        if (on.has(v)) on.delete(v);
+        else on.add(v);
+      }
+      this.draft = [...on];
     },
     apply() {
       this.$emit('apply', this.field, [...this.draft]);
@@ -131,6 +159,11 @@ Vue.component('col-filter-head', {
         <div class="col-filter-panel">
           <el-input v-model="search" size="mini" placeholder="输入内容实时筛选"
             clearable prefix-icon="el-icon-search"></el-input>
+          <div class="col-filter-topbar">
+            <el-checkbox v-model="allSelected" :indeterminate="someSelected && !allSelected">全选</el-checkbox>
+            <span class="col-filter-total">(共{{ shown.length }}项 {{ shownTotal }}条)</span>
+            <span class="col-filter-invert" @click="invertSelection">反选</span>
+          </div>
           <div class="col-filter-list">
             <el-checkbox-group v-model="draft">
               <el-checkbox v-for="opt in shown" :key="opt.value" :label="opt.value">
