@@ -430,6 +430,21 @@
     .col-filter-icon.active {
       color: var(--color-accent);
     }
+    /* 搜索模式切换图标（prepend 槽）：and=次要色，or=高亮色区分 */
+    .col-filter-panel .el-input-group__prepend {
+      padding: 0 7px;
+    }
+    .col-filter-mode-btn {
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+    .col-filter-mode-btn.is-or {
+      color: var(--color-accent);
+    }
+    .col-filter-mode-btn:hover {
+      color: var(--color-accent);
+    }
     .col-filter-panel .col-filter-topbar {
       display: flex;
       align-items: center;

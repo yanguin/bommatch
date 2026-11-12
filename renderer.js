@@ -110,12 +110,16 @@ Vue.component('col-filter-head', {
     active: { type: Array, default: () => [] }    // 已生效勾选值
   },
   data() {
-    return { search: '', draft: [], visible: false };
+    return { search: '', draft: [], visible: false, searchMode: 'and' };
   },
   computed: {
-    // 搜索实时过滤：空格分隔多关键字，需全部命中（AND）。
+    // 搜索实时过滤：空格分隔多关键字，两种模式（图标点击切换）：
+    // and = 须全部命中；or = 任一关键字命中即显示。
     // 字母/数字关键字须命中在"边界"上（名称开头或字母↔数字交界），如 T 只认 T475K 的系列位 T，
     // 不认 V475M...NKT 结尾夹带的 T；中文等非字母数字关键字退回普通包含匹配（2026-11-11 皇上钦定示例）
+    searchPlaceholder() {
+      return this.searchMode === 'or' ? '搜包含任一关键字，空格分隔' : '同时含所有关键字，空格分隔';
+    },
     shown() {
       const kw = this.search.trim().toLowerCase();
       if (!kw) return this.options;
@@ -131,9 +135,10 @@ Vue.component('col-filter-head', {
         }
         return false;
       };
+      const want = this.searchMode === 'or' ? 'some' : 'every';
       return this.options.filter(o => {
         const nameLc = o.name.toLowerCase();
-        return kws.every(k => hit(nameLc, k));
+        return kws[want](k => hit(nameLc, k));
       });
     },
     // 全选三态（作用于当前搜索过滤后的选项：搜索时只全选可见项）；set = 勾/取消全选
@@ -171,6 +176,10 @@ Vue.component('col-filter-head', {
       }
       this.draft = [...on];
     },
+    // 切换搜索模式：任一命中（or）/ 全部命中（and）；已输入关键字保留，选项列表实时刷新
+    toggleSearchMode() {
+      this.searchMode = this.searchMode === 'and' ? 'or' : 'and';
+    },
     apply() {
       this.$emit('apply', this.field, [...this.draft]);
       this.visible = false;
@@ -186,8 +195,13 @@ Vue.component('col-filter-head', {
       <el-popover placement="bottom" trigger="click" width="230"
         popper-class="col-filter-popper" v-model="visible" @show="onShow">
         <div class="col-filter-panel">
-          <el-input v-model="search" size="mini" placeholder="搜同时包含全部关键字，空格分隔"
-            clearable prefix-icon="el-icon-search"></el-input>
+          <el-input v-model="search" size="mini" :placeholder="searchPlaceholder"
+            clearable prefix-icon="el-icon-search">
+            <i slot="prepend" class="el-icon-s-operation col-filter-mode-btn"
+              :class="{ 'is-or': searchMode === 'or' }"
+              :title="searchMode === 'or' ? '当前：任一关键字命中即显示，点击切换为须命中全部关键字' : '当前：须命中全部关键字，点击切换为任一命中'"
+              @click="toggleSearchMode"></i>
+          </el-input>
           <div class="col-filter-topbar">
             <el-checkbox v-model="allSelected" :indeterminate="someSelected && !allSelected">全选</el-checkbox>
             <span class="col-filter-total">(共{{ shown.length }}项 {{ shownTotal }}条)</span>
